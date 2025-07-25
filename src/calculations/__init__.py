@@ -1,0 +1,3 @@
+"""
+Stock analysis calculation components
+"""

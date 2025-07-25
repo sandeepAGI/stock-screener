@@ -1,0 +1,77 @@
+# StockAnalyzer Pro Configuration
+
+# Methodology Weights
+methodology:
+  weights:
+    fundamental: 0.40    # P/E, EV/EBITDA, PEG, FCF Yield
+    quality: 0.25        # ROE, ROIC, Debt ratios
+    growth: 0.20         # Revenue/EPS growth
+    sentiment: 0.15      # News + social sentiment
+
+# Data Sources
+data_sources:
+  yahoo_finance:
+    enabled: true
+    rate_limit_per_hour: 2000
+    timeout: 30
+  
+  reddit:
+    enabled: true
+    rate_limit_per_minute: 60
+    subreddits:
+      - "investing"
+      - "stocks" 
+      - "SecurityAnalysis"
+    timeout: 30
+
+# Database
+database:
+  type: "sqlite"
+  path: "data/stock_data.db"
+  
+# Stock Universe (POC)
+stocks:
+  # Sample S&P 500 stocks for POC
+  sample_symbols:
+    - "AAPL"   # Apple
+    - "MSFT"   # Microsoft  
+    - "GOOGL"  # Alphabet
+    - "AMZN"   # Amazon
+    - "NVDA"   # NVIDIA
+    - "TSLA"   # Tesla
+    - "META"   # Meta
+    - "BRK.B"  # Berkshire Hathaway
+    - "UNH"    # UnitedHealth
+    - "JNJ"    # Johnson & Johnson
+    - "JPM"    # JPMorgan Chase
+    - "V"      # Visa
+    - "PG"     # Procter & Gamble
+    - "HD"     # Home Depot
+    - "MA"     # Mastercard
+    - "AVGO"   # Broadcom
+    - "PFE"    # Pfizer
+    - "BAC"    # Bank of America
+    - "ABBV"   # AbbVie
+    - "KO"     # Coca-Cola
+    - "TMO"    # Thermo Fisher
+    - "COST"   # Costco
+    - "MRK"    # Merck
+    - "PEP"    # PepsiCo
+    - "WMT"    # Walmart
+    - "ADBE"   # Adobe
+    - "DIS"    # Disney
+    - "ABT"    # Abbott
+    - "CRM"    # Salesforce
+    - "VZ"     # Verizon
+
+# Dashboard Settings  
+dashboard:
+  title: "StockAnalyzer Pro - POC"
+  page_icon: "📊"
+  layout: "wide"
+  sidebar_expanded: true
+  
+# Logging
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

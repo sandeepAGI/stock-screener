@@ -1,0 +1,20 @@
+# Core Dependencies
+streamlit>=1.28.0          # Dashboard framework
+pandas>=2.0.0              # Data manipulation  
+yfinance>=0.2.18           # Yahoo Finance data
+praw>=7.7.0                # Reddit API
+requests>=2.31.0           # HTTP requests
+plotly>=5.15.0             # Interactive charts
+python-dotenv>=1.0.0       # Environment variables
+
+# Sentiment Analysis
+textblob>=0.17.1           # Basic sentiment analysis
+vaderSentiment>=3.3.2      # Finance-tuned sentiment
+
+# Testing
+pytest>=7.4.0              # Testing framework
+pytest-cov>=4.0.0          # Coverage reporting
+
+# Development
+black>=23.0.0              # Code formatting
+flake8>=6.0.0              # Linting
