@@ -353,7 +353,7 @@ Fundamental Score = (54.6 × 0.292) + (58.2 × 0.244) + (9.7 × 0.244) + (50.4 �
                   = 43.6/100
 ```
 
-**Confidence:** 100% (all four metrics successfully calculated)
+**Data Quality:** 100% (all four metrics successfully calculated)
 
 This represents a significant improvement from the non-sector-adjusted score of 33.2, better reflecting AAPL's reasonable valuation within the technology sector context.
 
@@ -598,7 +598,7 @@ Quality Score = (100 × 0.40) + (0 × 0.35) + (0 × 0.15) + (9.3 × 0.10) / 0.50
               = 81.9/100
 ```
 
-**Confidence:** 50% (2 out of 4 metrics successfully calculated)
+**Data Quality:** 50% (2 out of 4 metrics successfully calculated)
 
 This example demonstrates the system's ability to handle data quality issues while providing meaningful scores based on available information.
 
@@ -875,7 +875,7 @@ Growth Score = (25.7 × 0.35) + (32.3 × 0.40) + (91.5 × 0.10) + (80.4 × 0.15)
              = 43.1/100
 ```
 
-**Confidence:** 100% (all four metrics successfully calculated)
+**Data Quality:** 100% (all four metrics successfully calculated)
 
 This score reflects AAPL's moderate growth profile within the technology sector context, where higher growth rates are typically expected.
 
@@ -920,7 +920,7 @@ The Sentiment Analysis component evaluates market perception and momentum throug
 **Methodology:**
 - Dual-engine sentiment analysis using TextBlob and VADER algorithms
 - Combined scoring approach for improved accuracy
-- Confidence weighting based on algorithm agreement
+- Data quality weighting based on algorithm agreement
 - Focus on financial news headlines and summaries
 
 **Data Sources:**
@@ -940,7 +940,7 @@ def analyze_text_sentiment(text):
     # Combined score with equal weighting
     combined_sentiment = (textblob_sentiment + vader_sentiment) / 2
     
-    # Confidence based on algorithm agreement
+    # Data quality based on algorithm agreement
     agreement = 1 - abs(textblob_sentiment - vader_sentiment) / 2
     reliability = max(0.5, agreement)
     
@@ -1160,7 +1160,7 @@ Sentiment Score = (59.5 × 0.40) + (49.3 × 0.35) + (0.0 × 0.20) + (73.3 × 0.0
                 = 55.9/100
 ```
 
-**Confidence:** 75% (3 out of 4 metrics available, good data volume)
+**Data Quality:** 75% (3 out of 4 metrics available, good data volume)
 
 This score reflects neutral-to-slightly-positive sentiment for AAPL with good market attention but missing momentum data.
 
