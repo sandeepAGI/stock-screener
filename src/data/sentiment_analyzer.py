@@ -20,7 +20,7 @@ class SentimentScore:
     """Container for sentiment analysis results"""
     text: str
     sentiment_score: float  # -1 (negative) to 1 (positive)
-    confidence: float      # 0 to 1
+    data_quality: float      # 0 to 1
     method: str           # 'textblob', 'vader', or 'combined'
     
 class SentimentAnalyzer:
@@ -76,9 +76,9 @@ class SentimentAnalyzer:
         
         # TextBlob returns polarity (-1 to 1) and subjectivity (0 to 1)
         sentiment_score = blob.sentiment.polarity
-        confidence = blob.sentiment.subjectivity
+        data_quality = blob.sentiment.subjectivity
         
-        return SentimentScore(text, sentiment_score, confidence, 'textblob')
+        return SentimentScore(text, sentiment_score, data_quality, 'textblob')
         
     def _vader_analysis(self, text: str) -> SentimentScore:
         """VADER sentiment analysis (better for financial text)"""
@@ -87,10 +87,10 @@ class SentimentAnalyzer:
         # VADER returns compound score (-1 to 1)
         sentiment_score = scores['compound']
         
-        # Calculate confidence based on the strength of positive/negative scores
-        confidence = max(scores['pos'], scores['neg'])
+        # Calculate data quality based on the strength of positive/negative scores
+        data_quality = max(scores['pos'], scores['neg'])
         
-        return SentimentScore(text, sentiment_score, confidence, 'vader')
+        return SentimentScore(text, sentiment_score, data_quality, 'vader')
         
     def _combined_analysis(self, text: str) -> SentimentScore:
         """Combined analysis using both methods with financial term weighting"""
@@ -109,14 +109,14 @@ class SentimentAnalyzer:
         # Apply financial term adjustment
         combined_sentiment *= financial_weight
         
-        # Combine confidence scores
-        combined_confidence = (vader_result.confidence + textblob_result.confidence) / 2
+        # Combine data quality scores
+        combined_data_quality = (vader_result.data_quality + textblob_result.data_quality) / 2
         
         # Ensure bounds
         combined_sentiment = max(-1.0, min(1.0, combined_sentiment))
-        combined_confidence = max(0.0, min(1.0, combined_confidence))
+        combined_data_quality = max(0.0, min(1.0, combined_data_quality))
         
-        return SentimentScore(text, combined_sentiment, combined_confidence, 'combined')
+        return SentimentScore(text, combined_sentiment, combined_data_quality, 'combined')
         
     def _calculate_financial_weight(self, text: str) -> float:
         """
@@ -157,7 +157,7 @@ class SentimentAnalyzer:
             return {
                 'avg_sentiment': 0.0,
                 'sentiment_std': 0.0,
-                'confidence': 0.0,
+                'data_quality': 0.0,
                 'headline_count': 0,
                 'positive_count': 0,
                 'negative_count': 0,
@@ -166,7 +166,7 @@ class SentimentAnalyzer:
             
         try:
             sentiments = []
-            confidences = []
+            data_qualities = []
             
             for headline in headlines:
                 # Combine title and summary for analysis
@@ -175,7 +175,7 @@ class SentimentAnalyzer:
                 if text.strip():
                     result = self.analyze_text(text)
                     sentiments.append(result.sentiment_score)
-                    confidences.append(result.confidence)
+                    data_qualities.append(result.data_quality)
                     
             if not sentiments:
                 return self.analyze_news_headlines([])  # Return empty result
@@ -185,7 +185,7 @@ class SentimentAnalyzer:
             
             avg_sentiment = sentiments_series.mean()
             sentiment_std = sentiments_series.std()
-            avg_confidence = pd.Series(confidences).mean()
+            avg_data_quality = pd.Series(data_qualities).mean()
             
             # Count sentiment categories
             positive_count = sum(1 for s in sentiments if s > 0.1)
@@ -195,7 +195,7 @@ class SentimentAnalyzer:
             return {
                 'avg_sentiment': float(avg_sentiment),
                 'sentiment_std': float(sentiment_std) if not pd.isna(sentiment_std) else 0.0,
-                'confidence': float(avg_confidence),
+                'data_quality': float(avg_data_quality),
                 'headline_count': len(sentiments),
                 'positive_count': positive_count,
                 'negative_count': negative_count,
@@ -220,7 +220,7 @@ class SentimentAnalyzer:
             return {
                 'avg_sentiment': 0.0,
                 'weighted_sentiment': 0.0,
-                'confidence': 0.0,
+                'data_quality': 0.0,
                 'post_count': 0,
                 'total_score': 0,
                 'avg_score': 0.0
@@ -228,7 +228,7 @@ class SentimentAnalyzer:
             
         try:
             sentiments = []
-            confidences = []
+            data_qualities = []
             scores = []
             weighted_sentiments = []
             
@@ -241,7 +241,7 @@ class SentimentAnalyzer:
                     result = self.analyze_text(text)
                     
                     sentiments.append(result.sentiment_score)
-                    confidences.append(result.confidence)
+                    data_qualities.append(result.data_quality)
                     scores.append(post_score)
                     
                     # Weight sentiment by post score (upvotes - downvotes)
@@ -256,12 +256,12 @@ class SentimentAnalyzer:
             
             avg_sentiment = pd.Series(sentiments).mean()
             weighted_sentiment = sum(weighted_sentiments) / total_weight if total_weight > 0 else 0
-            avg_confidence = pd.Series(confidences).mean()
+            avg_data_quality = pd.Series(data_qualities).mean()
             
             return {
                 'avg_sentiment': float(avg_sentiment),
                 'weighted_sentiment': float(weighted_sentiment),
-                'confidence': float(avg_confidence),
+                'data_quality': float(avg_data_quality),
                 'post_count': len(sentiments),
                 'total_score': sum(scores),
                 'avg_score': float(pd.Series(scores).mean())
@@ -303,27 +303,27 @@ class StockSentimentCollector:
             if reddit_sentiment and reddit_sentiment['post_count'] > 0:
                 combined_sentiment = (news_sentiment['avg_sentiment'] * 0.6 + 
                                     reddit_sentiment['weighted_sentiment'] * 0.4)
-                combined_confidence = (news_sentiment['confidence'] * 0.6 + 
-                                     reddit_sentiment['confidence'] * 0.4)
+                combined_data_quality = (news_sentiment['data_quality'] * 0.6 + 
+                                     reddit_sentiment['data_quality'] * 0.4)
             else:
                 combined_sentiment = news_sentiment['avg_sentiment']
-                combined_confidence = news_sentiment['confidence']
+                combined_data_quality = news_sentiment['data_quality']
                 
             return {
                 # Combined metrics
                 'combined_sentiment': combined_sentiment,
-                'combined_confidence': combined_confidence,
+                'combined_data_quality': combined_data_quality,
                 
                 # News metrics
                 'news_sentiment': news_sentiment['avg_sentiment'],
-                'news_confidence': news_sentiment['confidence'],
+                'news_data_quality': news_sentiment['data_quality'],
                 'news_count': news_sentiment['headline_count'],
                 'news_positive': news_sentiment['positive_count'],
                 'news_negative': news_sentiment['negative_count'],
                 
                 # Reddit metrics
                 'reddit_sentiment': reddit_sentiment.get('weighted_sentiment', 0.0),
-                'reddit_confidence': reddit_sentiment.get('confidence', 0.0),
+                'reddit_data_quality': reddit_sentiment.get('data_quality', 0.0),
                 'reddit_count': reddit_sentiment.get('post_count', 0),
                 'reddit_score': reddit_sentiment.get('total_score', 0),
                 
@@ -336,12 +336,12 @@ class StockSentimentCollector:
             logger.error(f"Error collecting sentiment for {stock_data.symbol}: {str(e)}")
             return {
                 'combined_sentiment': 0.0,
-                'combined_confidence': 0.0,
+                'combined_data_quality': 0.0,
                 'news_sentiment': 0.0,
-                'news_confidence': 0.0,
+                'news_data_quality': 0.0,
                 'news_count': 0,
                 'reddit_sentiment': 0.0,
-                'reddit_confidence': 0.0,
+                'reddit_data_quality': 0.0,
                 'reddit_count': 0,
                 'analysis_date': datetime.now().isoformat(),
                 'symbol': stock_data.symbol

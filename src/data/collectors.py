@@ -32,7 +32,7 @@ class SentimentData:
     news_sentiment: float
     reddit_sentiment: float
     combined_sentiment: float
-    confidence: float
+    data_quality: float
     source_count: int
 
 class YahooFinanceCollector:

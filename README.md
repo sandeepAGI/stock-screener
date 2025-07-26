@@ -162,7 +162,7 @@ collect_sp500_sample()  # Collect data for 30 S&P 500 stocks
 - **Fundamental Data**: ✅ P/E, Market Cap, EPS stored successfully  
 - **News Collection**: ✅ 10+ articles with sentiment analysis
 - **Reddit Integration**: ✅ 5+ posts with sentiment scores
-- **Daily Sentiment**: ✅ Combined scoring with confidence metrics
+- **Daily Sentiment**: ✅ Combined scoring with data quality metrics
 
 ### Sample Data Retrieved (AAPL)
 ```
@@ -221,7 +221,7 @@ pytest>=7.4.0              # Testing framework
 ### Key Features
 - **Full Audit Trail**: Raw content stored for transparency
 - **Performance Optimized**: Indexed queries for fast retrieval
-- **Quality Tracking**: Data source and confidence scoring
+- **Quality Tracking**: Data source and data quality scoring
 - **Extensible Schema**: Ready for additional metrics
 
 ## 🎯 Next Steps (Current Phase)

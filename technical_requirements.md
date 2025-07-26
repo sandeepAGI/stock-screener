@@ -153,7 +153,7 @@ class SentimentData:
     symbol: str
     date: datetime
     sentiment_score: float  # -1 to 1
-    confidence: float       # 0 to 1
+    data_quality: float       # 0 to 1
     article_count: int
     source: str
 ```
@@ -199,7 +199,7 @@ src/calculation_engine/
 ├── composite/
 │   ├── score_calculator.py
 │   ├── ranking_engine.py
-│   └── confidence_calculator.py
+│   └── data_quality_calculator.py
 ├── scenarios/
 │   ├── stress_tester.py
 │   ├── scenario_modeler.py
@@ -236,7 +236,7 @@ class CompositeScoreCalculator:
     
     def __init__(self, weights: Dict[str, float])
     def calculate_composite_score(self, symbol: str) -> CompositeScore
-    def calculate_confidence_interval(self, score: float, data_quality: float) -> Tuple[float, float]
+    def calculate_data_quality_range(self, score: float, data_quality: float) -> Tuple[float, float]
     def rank_stocks(self, scores: List[CompositeScore]) -> List[RankedStock]
     def generate_investment_signals(self, ranked_stocks: List[RankedStock]) -> List[InvestmentSignal]
 
@@ -485,8 +485,8 @@ CREATE TABLE calculated_metrics (
     sentiment_score DECIMAL(5,2),
     composite_score DECIMAL(5,2),
     sector_percentile DECIMAL(5,2),
-    confidence_interval_lower DECIMAL(5,2),
-    confidence_interval_upper DECIMAL(5,2),
+    data_quality_lower DECIMAL(5,2),
+    data_quality_upper DECIMAL(5,2),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(symbol, calculation_date)
 );
@@ -497,7 +497,7 @@ CREATE TABLE sentiment_data (
     symbol VARCHAR(10) REFERENCES stocks(symbol),
     date DATE NOT NULL,
     sentiment_score DECIMAL(4,3), -- -1.000 to 1.000
-    confidence_score DECIMAL(4,3), -- 0.000 to 1.000
+    data_quality_score DECIMAL(4,3), -- 0.000 to 1.000
     article_count INTEGER,
     positive_mentions INTEGER,
     negative_mentions INTEGER,
@@ -1703,7 +1703,7 @@ if __name__ == '__main__':
 
 **Success Criteria**:
 - Calculate all 4 methodology components for any stock
-- Generate composite scores with confidence intervals
+- Generate composite scores with data quality assessments
 - Rank stocks by composite score
 
 ### Phase 3: Dashboard MVP (Week 3)

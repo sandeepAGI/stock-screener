@@ -123,7 +123,7 @@ def analyze_mock_community_sentiment(messages: List[MockCommunityMessage]) -> Di
             'bullish_ratio': 0.0,
             'bearish_ratio': 0.0,
             'vote_weighted_sentiment': 0.0,
-            'confidence': 0.0
+            'data_quality': 0.0
         }
     
     # Analyze message sentiment based on content
@@ -172,8 +172,8 @@ def analyze_mock_community_sentiment(messages: List[MockCommunityMessage]) -> Di
     bullish_ratio = bullish_count / total_messages
     bearish_ratio = bearish_count / total_messages
     
-    # Confidence based on message count and vote activity
-    confidence = min(1.0, (total_messages / 20) * 0.8 + (sum(vote_weights) / (total_messages * 10)) * 0.2)
+    # Data quality based on message count and vote activity
+    data_quality = min(1.0, (total_messages / 20) * 0.8 + (sum(vote_weights) / (total_messages * 10)) * 0.2)
     
     return {
         'message_count': total_messages,
@@ -181,7 +181,7 @@ def analyze_mock_community_sentiment(messages: List[MockCommunityMessage]) -> Di
         'bullish_ratio': bullish_ratio,
         'bearish_ratio': bearish_ratio, 
         'vote_weighted_sentiment': vote_weighted_sentiment,
-        'confidence': confidence,
+        'data_quality': data_quality,
         'total_upvotes': sum(msg.upvotes for msg in messages),
         'total_downvotes': sum(msg.downvotes for msg in messages)
     }

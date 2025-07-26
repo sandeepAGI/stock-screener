@@ -26,7 +26,7 @@ class NewsArticle:
     publish_date: datetime
     url: str
     sentiment_score: float
-    confidence_score: float
+    data_quality_score: float
 
 @dataclass
 class RedditPost:
@@ -43,7 +43,7 @@ class RedditPost:
     created_utc: datetime
     url: str
     sentiment_score: float
-    confidence_score: float
+    data_quality_score: float
 
 @dataclass
 class DailySentiment:
@@ -55,7 +55,7 @@ class DailySentiment:
     reddit_sentiment: float
     reddit_count: int
     combined_sentiment: float
-    confidence: float
+    data_quality: float
 
 class DatabaseManager:
     """
@@ -197,7 +197,7 @@ class DatabaseManager:
                     publish_date TIMESTAMP,
                     url TEXT,
                     sentiment_score DECIMAL(4,3),
-                    confidence_score DECIMAL(4,3),
+                    data_quality_score DECIMAL(4,3),
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     
                     FOREIGN KEY (symbol) REFERENCES stocks(symbol)
@@ -219,7 +219,7 @@ class DatabaseManager:
                     created_utc TIMESTAMP,
                     url TEXT,
                     sentiment_score DECIMAL(4,3),
-                    confidence_score DECIMAL(4,3),
+                    data_quality_score DECIMAL(4,3),
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     
                     FOREIGN KEY (symbol) REFERENCES stocks(symbol)
@@ -236,7 +236,7 @@ class DatabaseManager:
                     reddit_sentiment DECIMAL(4,3),
                     reddit_count INTEGER,
                     combined_sentiment DECIMAL(4,3),
-                    confidence DECIMAL(4,3),
+                    data_quality DECIMAL(4,3),
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     
                     FOREIGN KEY (symbol) REFERENCES stocks(symbol),
@@ -259,8 +259,8 @@ class DatabaseManager:
                     -- Composite score
                     composite_score DECIMAL(5,2),
                     sector_percentile DECIMAL(5,2),
-                    confidence_interval_lower DECIMAL(5,2),
-                    confidence_interval_upper DECIMAL(5,2),
+                    data_quality_lower DECIMAL(5,2),
+                    data_quality_upper DECIMAL(5,2),
                     
                     -- Metadata
                     methodology_version VARCHAR(10),
@@ -407,7 +407,7 @@ class DatabaseManager:
         
         sql = '''
             INSERT OR REPLACE INTO news_articles
-            (symbol, title, summary, content, publisher, publish_date, url, sentiment_score, confidence_score)
+            (symbol, title, summary, content, publisher, publish_date, url, sentiment_score, data_quality_score)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         '''
         
@@ -415,7 +415,7 @@ class DatabaseManager:
             cursor.execute(sql, (
                 article.symbol, article.title, article.summary, article.content,
                 article.publisher, article.publish_date, article.url,
-                article.sentiment_score, article.confidence_score
+                article.sentiment_score, article.data_quality_score
             ))
         
         self.connection.commit()
@@ -429,7 +429,7 @@ class DatabaseManager:
         sql = '''
             INSERT OR REPLACE INTO reddit_posts
             (symbol, post_id, title, content, subreddit, author, score, upvote_ratio, 
-             num_comments, created_utc, url, sentiment_score, confidence_score)
+             num_comments, created_utc, url, sentiment_score, data_quality_score)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         '''
         
@@ -437,7 +437,7 @@ class DatabaseManager:
             cursor.execute(sql, (
                 post.symbol, post.post_id, post.title, post.content, post.subreddit,
                 post.author, post.score, post.upvote_ratio, post.num_comments,
-                post.created_utc, post.url, post.sentiment_score, post.confidence_score
+                post.created_utc, post.url, post.sentiment_score, post.data_quality_score
             ))
         
         self.connection.commit()
@@ -451,14 +451,14 @@ class DatabaseManager:
         sql = '''
             INSERT OR REPLACE INTO daily_sentiment
             (symbol, date, news_sentiment, news_count, reddit_sentiment, reddit_count,
-             combined_sentiment, confidence)
+             combined_sentiment, data_quality)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         '''
         
         cursor.execute(sql, (
             sentiment.symbol, sentiment.date, sentiment.news_sentiment, sentiment.news_count,
             sentiment.reddit_sentiment, sentiment.reddit_count, sentiment.combined_sentiment,
-            sentiment.confidence
+            sentiment.data_quality
         ))
         
         self.connection.commit()
