@@ -4,13 +4,15 @@
 
 **Purpose**: Automated stock mispricing detection using a comprehensive 4-component methodology with user-controlled data quality gating  
 **Status**: 90% Complete - Professional data management system with Streamlit dashboard  
-**Timeline**: Phase 1 Complete - Ready for scenario analysis and production deployment
+**Timeline**: Streamlit needs to be updated after data management system is fully tested and deployed. After that we would be ready for scenario analysis and production deployment
 
 **Core Innovation**: User-controlled data quality gating where analysts control when data is "ready" for analysis, ensuring quality before insights.
 
+**Disclaimer** I am not a professional programmer and could not have done this without Claude Code (Hat Tip). Please review and use as may be appropropriate for your needs. This is not meant to provide investment advise. 
+
 ## 📊 Methodology Overview
 
-StockAnalyzer Pro uses a sophisticated 4-component weighted methodology to identify potentially mispriced stocks:
+StockAnalyzer Pro uses a 4-component weighted methodology to identify potentially mispriced stocks:
 
 | Component | Weight | Key Metrics | Purpose |
 |-----------|--------|-------------|---------|
