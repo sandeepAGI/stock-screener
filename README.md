@@ -90,9 +90,10 @@ pip install -r requirements.txt
 python launch_dashboard.py
 ```
 This will:
-- Initialize database with sample data
+- Initialize empty database with proper schema
 - Launch dashboard on http://localhost:8501
 - Open browser automatically
+- Use Data Management section to add stocks and collect data
 
 ### **Method 2: Manual Launch**
 ```bash
@@ -111,10 +112,10 @@ streamlit run streamlit_app.py
 
 ### **Method 3: CLI Interface**
 ```bash
-# Initialize with sample data
+# Initialize empty database and test systems
 python test_e2e_workflow.py
 
-# Run comprehensive calculations
+# Run comprehensive calculations (after adding data)
 python -c "
 from src.calculations.composite import CompositeCalculator
 calc = CompositeCalculator()

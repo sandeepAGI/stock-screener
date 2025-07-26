@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Launch Dashboard with Sample Data
-Prepares sample data and launches the Streamlit dashboard
+StockAnalyzer Pro Dashboard Launcher
+Initializes database schema and launches the Streamlit dashboard
 """
 
 import sys
@@ -11,87 +11,37 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import subprocess
 from datetime import datetime, date
 
-def prepare_sample_data():
-    """Prepare sample data for dashboard demonstration"""
-    print("🔧 Preparing Sample Data for Dashboard...")
+def initialize_database():
+    """Initialize empty database with proper schema for user-controlled data management"""
+    print("🔧 Initializing Database Schema...")
     
     try:
         from src.data.database import DatabaseManager
-        from src.calculations.composite import CompositeCalculator
         
-        # Initialize database
+        # Initialize database manager
         db = DatabaseManager()
         
-        # Use a demo database
-        demo_db_path = "demo_stock_data.db"
-        if os.path.exists(demo_db_path):
-            os.remove(demo_db_path)
-        
-        db.db_path = demo_db_path
-        
         if not db.connect():
-            print("❌ Failed to create demo database")
+            print("❌ Failed to connect to database")
             return False
         
+        # Create tables if they don't exist
         db.create_tables()
-        print("✅ Demo database created")
+        print("✅ Database schema initialized")
         
-        # Add sample stocks
-        sample_stocks = [
-            ("AAPL", "Apple Inc.", "Technology", "Technology Hardware"),
-            ("MSFT", "Microsoft Corporation", "Technology", "Software"),
-            ("GOOGL", "Alphabet Inc.", "Communication Services", "Internet Content & Information"),
-            ("TSLA", "Tesla Inc.", "Consumer Discretionary", "Automobiles"),
-            ("JNJ", "Johnson & Johnson", "Healthcare", "Pharmaceuticals"),
-            ("JPM", "JPMorgan Chase & Co.", "Financials", "Banks"),
-            ("NVDA", "NVIDIA Corporation", "Technology", "Semiconductors"),
-            ("UNH", "UnitedHealth Group", "Healthcare", "Health Care Plans"),
-            ("V", "Visa Inc.", "Financials", "Data Processing & Services"),
-            ("WMT", "Walmart Inc.", "Consumer Staples", "Food & Staples Retailing")
-        ]
-        
-        for symbol, name, sector, industry in sample_stocks:
-            db.insert_stock(symbol, name, sector, industry, None, "NYSE/NASDAQ")
-        
-        print(f"✅ Added {len(sample_stocks)} sample stocks")
-        
-        # Add mock fundamental data for demonstration
-        mock_fundamentals = {
-            'pe_ratio': 25.0,
-            'ev_to_ebitda': 18.0,
-            'peg_ratio': 1.5,
-            'free_cash_flow': 80000000000,
-            'market_cap': 3000000000000,
-            'total_revenue': 400000000000,
-            'net_income': 100000000000,
-            'total_assets': 350000000000,
-            'total_debt': 120000000000,
-            'shareholders_equity': 60000000000,
-            'return_on_equity': 0.18,
-            'debt_to_equity': 0.3,
-            'current_ratio': 1.8,
-            'revenue_growth': 0.08,
-            'earnings_growth': 0.12,
-            'data_source': 'demo_data'
-        }
-        
-        # Add fundamental data for first few stocks
-        for symbol, _, _, _ in sample_stocks[:5]:
-            # Vary the data slightly for each stock
-            varied_fundamentals = mock_fundamentals.copy()
-            varied_fundamentals['pe_ratio'] *= (0.8 + hash(symbol) % 40 / 100)  # Vary PE ratio
-            varied_fundamentals['revenue_growth'] *= (0.5 + hash(symbol) % 100 / 100)  # Vary growth
-            
-            db.insert_fundamental_data(symbol, varied_fundamentals)
-        
-        print("✅ Added mock fundamental data")
+        # Check if any stocks exist
+        stocks = db.get_all_stocks()
+        if stocks:
+            print(f"📊 Found {len(stocks)} existing stocks in database")
+        else:
+            print("📝 Empty database - use Data Management section to add stocks")
         
         db.close()
-        print("✅ Sample data preparation completed")
+        print("✅ Database initialization completed")
         return True
         
     except Exception as e:
-        print(f"❌ Sample data preparation failed: {str(e)}")
+        print(f"❌ Database initialization failed: {str(e)}")
         return False
 
 def launch_dashboard():
@@ -120,9 +70,9 @@ def main():
     print("🎯 StockAnalyzer Pro Dashboard Launcher")
     print("=" * 50)
     
-    # Prepare sample data
-    if prepare_sample_data():
-        print("\n✅ Sample data ready!")
+    # Initialize database schema
+    if initialize_database():
+        print("\n✅ Database ready!")
         
         # Ask user if they want to launch
         try:
@@ -135,7 +85,7 @@ def main():
         except KeyboardInterrupt:
             print("\n✅ Launcher stopped by user")
     else:
-        print("❌ Sample data preparation failed. Cannot launch dashboard.")
+        print("❌ Database initialization failed. Cannot launch dashboard.")
         sys.exit(1)
 
 if __name__ == "__main__":
