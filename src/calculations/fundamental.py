@@ -20,6 +20,7 @@ from datetime import datetime, date
 from src.data.database import DatabaseManager
 from src.utils.helpers import load_config
 from src.calculations.sector_adjustments import SectorAdjustmentEngine
+from src.data.data_versioning import DataVersionManager
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,13 @@ class FundamentalMetrics:
     # Metadata
     sector: Optional[str]
     data_quality: float
+    
+    # Data versioning and staleness indicators
+    data_age_days: Optional[float]
+    data_freshness_level: Optional[str]
+    staleness_impact: float
+    staleness_warnings: List[str]
+    data_version_id: Optional[str]
 
 class FundamentalCalculator:
     """
@@ -322,34 +330,54 @@ class FundamentalCalculator:
             logger.error(f"Error calculating FCF yield: {str(e)}")
             return None, 0.0
     
-    def calculate_fundamental_metrics(self, symbol: str, db: DatabaseManager) -> Optional[FundamentalMetrics]:
+    def calculate_fundamental_metrics(self, symbol: str, db: DatabaseManager, max_age_days: Optional[int] = None) -> Optional[FundamentalMetrics]:
         """
-        Calculate all fundamental metrics for a stock
+        Calculate all fundamental metrics for a stock with data versioning and staleness indicators
         
         Args:
             symbol: Stock symbol
             db: Database manager instance
+            max_age_days: Maximum allowed age of data in days (None = no limit)
             
         Returns:
             FundamentalMetrics object or None if insufficient data
         """
         try:
-            # Get latest fundamental data from database
-            fundamentals = db.get_latest_fundamentals(symbol)
-            stock_info = db.get_stock_info(symbol)
+            # Initialize data version manager
+            version_manager = DataVersionManager(db)
             
-            if not fundamentals:
+            # Get versioned fundamental data
+            versioned_data = version_manager.get_versioned_fundamentals(symbol, max_age_days)
+            
+            if not versioned_data or not versioned_data.data:
                 logger.warning(f"No fundamental data found for {symbol}")
                 return None
             
+            fundamentals = versioned_data.data
+            version_info = versioned_data.version_info
+            staleness_impact = versioned_data.staleness_impact
+            
+            # Get stock info for sector
+            stock_info = db.get_stock_info(symbol)
             sector = stock_info.get('sector') if stock_info else None
-            logger.info(f"Calculating fundamental metrics for {symbol} (Sector: {sector})")
+            
+            logger.info(f"Calculating fundamental metrics for {symbol} (Sector: {sector}, Data age: {version_info.age_days:.1f} days)")
+            
+            # Log staleness warnings
+            for warning in version_info.staleness_warnings:
+                logger.warning(f"{symbol}: {warning}")
             
             # Calculate individual metrics with sector adjustments
             pe_ratio, pe_score = self.calculate_pe_ratio(fundamentals, sector)
             ev_ebitda, ev_ebitda_score = self.calculate_ev_ebitda(fundamentals, sector)
             peg_ratio, peg_score = self.calculate_peg_ratio(fundamentals, sector)
             fcf_yield, fcf_yield_score = self.calculate_fcf_yield(fundamentals, sector)
+            
+            # Apply staleness impact to scores
+            pe_score *= staleness_impact
+            ev_ebitda_score *= staleness_impact
+            peg_score *= staleness_impact
+            fcf_yield_score *= staleness_impact
             
             # Get sector-adjusted weights
             component_weights = self.get_sector_adjusted_weights(sector)
@@ -370,10 +398,13 @@ class FundamentalCalculator:
             normalized_scores = [(score * weight / total_weight) for score, weight in valid_scores]
             
             fundamental_score = sum(normalized_scores)
-            data_quality_score = len(valid_scores) / len(scores)  # Data quality based on completeness
             
-            # Data quality assessment
-            data_quality = fundamentals.get('quality_score', 1.0)
+            # Adjust data quality score based on completeness and staleness
+            completeness_score = len(valid_scores) / len(scores)
+            data_quality_score = completeness_score * version_info.quality_score
+            
+            # Traditional data quality assessment
+            data_quality = fundamentals.get('quality_score', 1.0) * staleness_impact
             
             return FundamentalMetrics(
                 symbol=symbol,
@@ -389,7 +420,13 @@ class FundamentalCalculator:
                 fundamental_score=fundamental_score,
                 data_quality_score=data_quality_score,
                 sector=sector,
-                data_quality=data_quality
+                data_quality=data_quality,
+                # Data versioning information
+                data_age_days=version_info.age_days,
+                data_freshness_level=version_info.freshness_level.value,
+                staleness_impact=staleness_impact,
+                staleness_warnings=version_info.staleness_warnings,
+                data_version_id=version_info.version_id
             )
             
         except Exception as e:

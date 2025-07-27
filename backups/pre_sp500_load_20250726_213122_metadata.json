@@ -1,0 +1,23 @@
+{
+  "backup_name": "pre_sp500_load_20250726_213122",
+  "timestamp": "20250726_213122",
+  "created_at": "2025-07-26T21:31:22.309055",
+  "compressed": true,
+  "integrity_verified": true,
+  "file_size_bytes": 3282,
+  "record_counts": {
+    "stocks": 0,
+    "price_data": 0,
+    "fundamental_data": 0,
+    "news_articles": 0,
+    "reddit_posts": 0,
+    "daily_sentiment": 0
+  },
+  "checksum": "cbe6780aa1275f3845ada00f925d7d8b066500dadaa7b063c5779c3a0430e822",
+  "verification_details": {
+    "verified": true,
+    "errors": [],
+    "file_size": 3282,
+    "checksum_verified": true
+  }
+}

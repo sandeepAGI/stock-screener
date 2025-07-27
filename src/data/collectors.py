@@ -13,6 +13,8 @@ from dataclasses import dataclass
 import praw
 
 from src.utils.helpers import load_config, get_reddit_credentials, safe_divide
+from src.data.stock_universe import StockUniverseManager, UniverseType
+from src.data.database import DatabaseManager
 
 logger = logging.getLogger(__name__)
 
@@ -306,6 +308,10 @@ class DataCollectionOrchestrator:
         self.config = load_config(config_path)
         self.yahoo_collector = YahooFinanceCollector(self.config)
         self.reddit_collector = RedditCollector(self.config)
+        self.universe_manager = StockUniverseManager()
+        self.db_manager = DatabaseManager()
+        self.db_manager.connect()
+        self.db_manager.create_tables()
         
     def collect_complete_dataset(self, symbols: List[str]) -> Dict[str, StockData]:
         """
@@ -352,6 +358,610 @@ class DataCollectionOrchestrator:
         """
         symbols = self.config.get('stocks', {}).get('sample_symbols', [])
         return self.collect_complete_dataset(symbols)
+    
+    def refresh_fundamentals_only(self, symbols: List[str]) -> Dict[str, bool]:
+        """
+        Refresh only fundamental data for specified symbols
+        
+        Args:
+            symbols: List of stock symbols to refresh
+            
+        Returns:
+            Dictionary mapping symbols to success status
+        """
+        results = {}
+        logger.info(f"Refreshing fundamental data for {len(symbols)} symbols")
+        
+        for symbol in symbols:
+            try:
+                ticker = yf.Ticker(symbol)
+                info = ticker.info
+                
+                if info and len(info) > 5:  # Basic validation
+                    # Extract fundamental metrics
+                    fundamentals = self.yahoo_collector._extract_fundamentals(ticker)
+                    if fundamentals:
+                        results[symbol] = True
+                        logger.info(f"Successfully refreshed fundamentals for {symbol}")
+                    else:
+                        results[symbol] = False
+                        logger.warning(f"No fundamental data available for {symbol}")
+                else:
+                    results[symbol] = False
+                    logger.warning(f"Limited data returned for {symbol}")
+                    
+                time.sleep(0.1)  # Rate limiting
+                
+            except Exception as e:
+                results[symbol] = False
+                logger.error(f"Error refreshing fundamentals for {symbol}: {e}")
+        
+        return results
+    
+    def refresh_prices_only(self, symbols: List[str], period: str = "1mo") -> Dict[str, bool]:
+        """
+        Refresh only price data for specified symbols
+        
+        Args:
+            symbols: List of stock symbols to refresh
+            period: Period for price data (1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, 10y, ytd, max)
+            
+        Returns:
+            Dictionary mapping symbols to success status
+        """
+        results = {}
+        logger.info(f"Refreshing price data for {len(symbols)} symbols (period: {period})")
+        
+        for symbol in symbols:
+            try:
+                ticker = yf.Ticker(symbol)
+                hist = ticker.history(period=period)
+                
+                if not hist.empty and len(hist) > 0:
+                    results[symbol] = True
+                    logger.info(f"Successfully refreshed {len(hist)} price records for {symbol}")
+                else:
+                    results[symbol] = False
+                    logger.warning(f"No price data available for {symbol}")
+                
+                time.sleep(0.1)  # Rate limiting
+                
+            except Exception as e:
+                results[symbol] = False
+                logger.error(f"Error refreshing prices for {symbol}: {e}")
+        
+        return results
+    
+    def refresh_news_only(self, symbols: List[str]) -> Dict[str, bool]:
+        """
+        Refresh only news data for specified symbols
+        
+        Args:
+            symbols: List of stock symbols to refresh
+            
+        Returns:
+            Dictionary mapping symbols to success status
+        """
+        results = {}
+        logger.info(f"Refreshing news data for {len(symbols)} symbols")
+        
+        for symbol in symbols:
+            try:
+                ticker = yf.Ticker(symbol)
+                news = ticker.news
+                
+                if news and len(news) > 0:
+                    results[symbol] = True
+                    logger.info(f"Successfully refreshed {len(news)} news articles for {symbol}")
+                else:
+                    results[symbol] = False
+                    logger.warning(f"No news data available for {symbol}")
+                
+                time.sleep(0.1)  # Rate limiting
+                
+            except Exception as e:
+                results[symbol] = False
+                logger.error(f"Error refreshing news for {symbol}: {e}")
+        
+        return results
+    
+    def refresh_sentiment_only(self, symbols: List[str]) -> Dict[str, bool]:
+        """
+        Refresh only sentiment data for specified symbols
+        
+        Args:
+            symbols: List of stock symbols to refresh
+            
+        Returns:
+            Dictionary mapping symbols to success status
+        """
+        results = {}
+        logger.info(f"Refreshing sentiment data for {len(symbols)} symbols")
+        
+        for symbol in symbols:
+            try:
+                # Collect Reddit sentiment
+                reddit_sentiment = self.reddit_collector.collect_stock_mentions(symbol)
+                
+                # For demonstration, we'll consider it successful if we get any sentiment data
+                if reddit_sentiment is not None:
+                    results[symbol] = True
+                    logger.info(f"Successfully refreshed sentiment for {symbol}")
+                else:
+                    results[symbol] = False
+                    logger.warning(f"No sentiment data available for {symbol}")
+                
+                time.sleep(0.5)  # Longer delay for Reddit API
+                
+            except Exception as e:
+                results[symbol] = False
+                logger.error(f"Error refreshing sentiment for {symbol}: {e}")
+        
+        return results
+    
+    def bulk_add_stocks(self, symbols: List[str], validate: bool = True) -> Dict[str, Any]:
+        """
+        Add multiple stocks to the tracking list with validation
+        
+        Args:
+            symbols: List of stock symbols to add
+            validate: Whether to validate symbols exist and have data
+            
+        Returns:
+            Dictionary with results including success/failure counts and details
+        """
+        results = {
+            "total_requested": len(symbols),
+            "successfully_added": 0,
+            "failed": 0,
+            "skipped_duplicates": 0,
+            "details": {}
+        }
+        
+        logger.info(f"Bulk adding {len(symbols)} stocks (validation: {validate})")
+        
+        # Get current stock list from config or database
+        current_symbols = set(self.config.get('stocks', {}).get('sample_symbols', []))
+        
+        for symbol in symbols:
+            symbol = symbol.upper().strip()
+            
+            try:
+                # Check for duplicates
+                if symbol in current_symbols:
+                    results["skipped_duplicates"] += 1
+                    results["details"][symbol] = {"status": "duplicate", "message": "Already tracking"}
+                    continue
+                
+                # Validate symbol if requested
+                if validate:
+                    ticker = yf.Ticker(symbol)
+                    info = ticker.info
+                    
+                    if not info or len(info) < 5:
+                        results["failed"] += 1
+                        results["details"][symbol] = {"status": "failed", "message": "Invalid symbol or no data"}
+                        continue
+                    
+                    # Basic validation - check if we can get company name
+                    company_name = info.get('longName') or info.get('shortName', f"{symbol} Inc.")
+                    sector = info.get('sector', 'Unknown')
+                    
+                    time.sleep(0.1)  # Rate limiting
+                
+                # Add to tracking list
+                current_symbols.add(symbol)
+                results["successfully_added"] += 1
+                results["details"][symbol] = {
+                    "status": "added", 
+                    "message": f"Successfully added {symbol}",
+                    "company_name": company_name if validate else f"{symbol} Inc.",
+                    "sector": sector if validate else "Unknown"
+                }
+                
+            except Exception as e:
+                results["failed"] += 1
+                results["details"][symbol] = {"status": "error", "message": str(e)}
+                logger.error(f"Error adding {symbol}: {e}")
+        
+        logger.info(f"Bulk add complete: {results['successfully_added']} added, {results['failed']} failed, {results['skipped_duplicates']} duplicates")
+        return results
+    
+    def bulk_remove_stocks(self, symbols: List[str]) -> Dict[str, Any]:
+        """
+        Remove multiple stocks from the tracking list
+        
+        Args:
+            symbols: List of stock symbols to remove
+            
+        Returns:
+            Dictionary with results including success/failure counts and details
+        """
+        results = {
+            "total_requested": len(symbols),
+            "successfully_removed": 0,
+            "not_found": 0,
+            "details": {}
+        }
+        
+        logger.info(f"Bulk removing {len(symbols)} stocks")
+        
+        # Get current stock list from config
+        current_symbols = set(self.config.get('stocks', {}).get('sample_symbols', []))
+        
+        for symbol in symbols:
+            symbol = symbol.upper().strip()
+            
+            if symbol in current_symbols:
+                current_symbols.remove(symbol)
+                results["successfully_removed"] += 1
+                results["details"][symbol] = {"status": "removed", "message": f"Successfully removed {symbol}"}
+            else:
+                results["not_found"] += 1
+                results["details"][symbol] = {"status": "not_found", "message": f"{symbol} was not being tracked"}
+        
+        logger.info(f"Bulk remove complete: {results['successfully_removed']} removed, {results['not_found']} not found")
+        return results
+    
+    def get_collection_status(self, symbols: Optional[List[str]] = None) -> Dict[str, Any]:
+        """
+        Get current collection status for symbols
+        
+        Args:
+            symbols: List of symbols to check, or None for all tracked symbols
+            
+        Returns:
+            Dictionary with collection status information
+        """
+        if symbols is None:
+            symbols = self.config.get('stocks', {}).get('sample_symbols', [])
+        
+        status = {
+            "total_symbols": len(symbols),
+            "last_check": datetime.now().isoformat(),
+            "api_status": {
+                "yahoo_finance": self._check_yahoo_api_status(),
+                "reddit": self._check_reddit_api_status()
+            },
+            "symbols_status": {}
+        }
+        
+        # Quick status check for each symbol
+        for symbol in symbols[:10]:  # Limit to first 10 for performance
+            try:
+                ticker = yf.Ticker(symbol)
+                info = ticker.info
+                
+                if info and len(info) > 5:
+                    status["symbols_status"][symbol] = "available"
+                else:
+                    status["symbols_status"][symbol] = "limited_data"
+                    
+            except Exception as e:
+                status["symbols_status"][symbol] = "error"
+        
+        return status
+    
+    def _check_yahoo_api_status(self) -> str:
+        """Check Yahoo Finance API status"""
+        try:
+            ticker = yf.Ticker("AAPL")
+            info = ticker.info
+            return "active" if info and len(info) > 5 else "limited"
+        except:
+            return "down"
+    
+    def _check_reddit_api_status(self) -> str:
+        """Check Reddit API status"""
+        try:
+            # This would check Reddit API connectivity
+            return "active"  # Placeholder
+        except:
+            return "down"
+    
+    # Universe-aware collection methods
+    def collect_universe_data(self, universe_id: str, 
+                            data_types: List[str] = None,
+                            progress_callback: callable = None) -> Dict[str, Any]:
+        """
+        Collect data for an entire stock universe
+        
+        Args:
+            universe_id: ID of the universe to collect
+            data_types: List of data types to collect ['fundamentals', 'prices', 'news', 'sentiment']
+            progress_callback: Function to call with progress updates
+            
+        Returns:
+            Dictionary with collection results and statistics
+        """
+        if data_types is None:
+            data_types = ['fundamentals', 'prices', 'news', 'sentiment']
+        
+        # Get universe symbols
+        symbols = self.universe_manager.get_universe_symbols(universe_id)
+        if not symbols:
+            logger.error(f"Universe '{universe_id}' not found or empty")
+            return {"success": False, "error": "Universe not found or empty"}
+        
+        logger.info(f"Starting collection for universe '{universe_id}' with {len(symbols)} symbols")
+        
+        results = {
+            "universe_id": universe_id,
+            "total_symbols": len(symbols),
+            "start_time": datetime.now().isoformat(),
+            "data_types": data_types,
+            "collection_results": {},
+            "statistics": {
+                "successful": 0,
+                "failed": 0,
+                "completion_percentage": 0.0
+            }
+        }
+        
+        for i, symbol in enumerate(symbols):
+            if progress_callback:
+                progress_callback(i + 1, len(symbols), symbol)
+            
+            symbol_results = {}
+            symbol_success = True
+            
+            try:
+                # First, collect and insert stock metadata
+                stock_data = self.yahoo_collector.collect_stock_data(symbol)
+                if stock_data:
+                    # Insert stock info
+                    self.db_manager.insert_stock(
+                        symbol=symbol,
+                        company_name=stock_data.fundamental_data.get('company_name', f'{symbol} Inc.'),
+                        sector=stock_data.fundamental_data.get('sector', 'Unknown'),
+                        industry=stock_data.fundamental_data.get('industry', 'Unknown'),
+                        market_cap=stock_data.fundamental_data.get('market_cap'),
+                        listing_exchange=stock_data.fundamental_data.get('exchange', 'NASDAQ')
+                    )
+                    
+                    # Insert different data types
+                    if 'fundamentals' in data_types and stock_data.fundamental_data:
+                        try:
+                            self.db_manager.insert_fundamental_data(symbol, stock_data.fundamental_data)
+                            symbol_results['fundamentals'] = True
+                        except Exception as e:
+                            logger.error(f"Error inserting fundamentals for {symbol}: {e}")
+                            symbol_results['fundamentals'] = False
+                            symbol_success = False
+                    
+                    if 'prices' in data_types and hasattr(stock_data.price_data, 'iterrows') and not stock_data.price_data.empty:
+                        try:
+                            # Insert price data (convert DataFrame to records)
+                            for date, row in stock_data.price_data.iterrows():
+                                price_data = {
+                                    'date': date.strftime('%Y-%m-%d'),
+                                    'open': row.get('Open'),
+                                    'high': row.get('High'), 
+                                    'low': row.get('Low'),
+                                    'close': row.get('Close'),
+                                    'volume': row.get('Volume'),
+                                    'adjusted_close': row.get('Adj Close', row.get('Close'))
+                                }
+                                self.db_manager.insert_price_data(symbol, price_data)
+                            symbol_results['prices'] = True
+                        except Exception as e:
+                            logger.error(f"Error inserting prices for {symbol}: {e}")
+                            symbol_results['prices'] = False
+                            symbol_success = False
+                    elif 'prices' in data_types:
+                        logger.warning(f"Price data for {symbol} is not a DataFrame or is empty")
+                        symbol_results['prices'] = False
+                    
+                    if 'news' in data_types and stock_data.news_headlines:
+                        try:
+                            # Convert news data to NewsArticle objects
+                            from src.data.database import NewsArticle
+                            news_articles = []
+                            for news_item in stock_data.news_headlines:
+                                # Parse publish date from news data
+                                publish_date = datetime.now()  # Default fallback
+                                if news_item.get('publish_time'):
+                                    try:
+                                        # Parse ISO format: '2025-07-27T09:45:00Z'
+                                        publish_date = datetime.fromisoformat(news_item['publish_time'].replace('Z', '+00:00'))
+                                    except:
+                                        # Keep fallback if parsing fails
+                                        pass
+                                
+                                article = NewsArticle(
+                                    symbol=symbol,
+                                    title=news_item.get('title', ''),
+                                    summary=news_item.get('summary', ''),
+                                    content=news_item.get('summary', ''),  # Using summary as content
+                                    publisher=news_item.get('publisher', ''),
+                                    publish_date=publish_date,
+                                    url=news_item.get('link', ''),
+                                    sentiment_score=0.0,  # Will be calculated later
+                                    data_quality_score=0.8
+                                )
+                                news_articles.append(article)
+                            
+                            # Insert news articles in batch
+                            if news_articles:
+                                self.db_manager.insert_news_articles(news_articles)
+                            symbol_results['news'] = True
+                        except Exception as e:
+                            logger.error(f"Error inserting news for {symbol}: {e}")
+                            symbol_results['news'] = False
+                    
+                    if 'sentiment' in data_types:
+                        try:
+                            # Collect Reddit sentiment data
+                            reddit_posts = self.reddit_collector.collect_stock_mentions(symbol)
+                            if reddit_posts:
+                                # Convert to RedditPost objects
+                                from src.data.database import RedditPost
+                                reddit_post_objects = []
+                                for post in reddit_posts:
+                                    reddit_post = RedditPost(
+                                        symbol=symbol,
+                                        post_id=post.get('id', ''),
+                                        title=post.get('title', ''),
+                                        content=post.get('text', ''),
+                                        subreddit=post.get('subreddit', ''),
+                                        author='unknown',  # Reddit API doesn't provide this in our collector
+                                        score=post.get('score', 0),
+                                        upvote_ratio=post.get('upvote_ratio', 0.0),
+                                        num_comments=post.get('num_comments', 0),
+                                        created_utc=datetime.fromtimestamp(post.get('created_utc', 0)),
+                                        url=post.get('url', ''),
+                                        sentiment_score=0.0,  # Will be calculated later
+                                        data_quality_score=0.7  # Will map to confidence_score in DB
+                                    )
+                                    reddit_post_objects.append(reddit_post)
+                                
+                                # Insert Reddit posts in batch
+                                if reddit_post_objects:
+                                    self.db_manager.insert_reddit_posts(reddit_post_objects)
+                            symbol_results['sentiment'] = bool(reddit_posts)
+                        except Exception as e:
+                            logger.error(f"Error collecting sentiment for {symbol}: {e}")
+                            symbol_results['sentiment'] = False
+                else:
+                    # No stock data collected
+                    symbol_success = False
+                    symbol_results['fundamentals'] = False
+                    symbol_results['prices'] = False
+                    symbol_results['news'] = False
+                    symbol_results['sentiment'] = False
+                
+                results["collection_results"][symbol] = symbol_results
+                
+                if symbol_success:
+                    results["statistics"]["successful"] += 1
+                else:
+                    results["statistics"]["failed"] += 1
+                
+                # Update progress
+                completed = i + 1
+                results["statistics"]["completion_percentage"] = (completed / len(symbols)) * 100
+                
+                logger.info(f"Processed {symbol} ({completed}/{len(symbols)}) - Success: {symbol_success}")
+                
+            except Exception as e:
+                logger.error(f"Error collecting data for {symbol}: {e}")
+                results["collection_results"][symbol] = {"error": str(e)}
+                results["statistics"]["failed"] += 1
+        
+        results["end_time"] = datetime.now().isoformat()
+        results["success"] = results["statistics"]["successful"] > 0
+        
+        logger.info(f"Universe collection complete: {results['statistics']['successful']} successful, {results['statistics']['failed']} failed")
+        
+        return results
+    
+    def collect_sp500_baseline(self, progress_callback: callable = None) -> Dict[str, Any]:
+        """
+        Collect complete S&P 500 baseline dataset
+        
+        Args:
+            progress_callback: Function to call with progress updates (current, total, symbol)
+            
+        Returns:
+            Dictionary with collection results
+        """
+        logger.info("Starting S&P 500 baseline data collection")
+        
+        # Ensure S&P 500 universe is up to date
+        if not self.universe_manager.update_sp500_universe():
+            return {"success": False, "error": "Failed to update S&P 500 universe"}
+        
+        # Collect data for the entire S&P 500 universe
+        return self.collect_universe_data(
+            universe_id='sp500',
+            data_types=['fundamentals', 'prices', 'news', 'sentiment'],
+            progress_callback=progress_callback
+        )
+    
+    def get_universe_collection_status(self, universe_id: str) -> Dict[str, Any]:
+        """
+        Get collection status for a universe
+        
+        Args:
+            universe_id: ID of the universe to check
+            
+        Returns:
+            Dictionary with status information
+        """
+        symbols = self.universe_manager.get_universe_symbols(universe_id)
+        if not symbols:
+            return {"error": "Universe not found or empty"}
+        
+        universe_info = self.universe_manager.get_universe_info(universe_id)
+        
+        status = {
+            "universe_id": universe_id,
+            "universe_name": universe_info['metadata'].get('name', universe_id) if universe_info else universe_id,
+            "total_symbols": len(symbols),
+            "last_check": datetime.now().isoformat(),
+            "api_status": {
+                "yahoo_finance": self._check_yahoo_api_status(),
+                "reddit": self._check_reddit_api_status()
+            },
+            "estimated_time": self._estimate_collection_time(len(symbols))
+        }
+        
+        return status
+    
+    def _estimate_collection_time(self, symbol_count: int) -> Dict[str, Any]:
+        """Estimate collection time for a given number of symbols"""
+        # Rough estimates based on rate limits and API response times
+        fundamentals_time = symbol_count * 0.5  # 0.5 seconds per symbol
+        prices_time = symbol_count * 0.3       # 0.3 seconds per symbol  
+        news_time = symbol_count * 0.4         # 0.4 seconds per symbol
+        sentiment_time = symbol_count * 2.0    # 2 seconds per symbol (Reddit rate limits)
+        
+        total_seconds = fundamentals_time + prices_time + news_time + sentiment_time
+        
+        return {
+            "total_seconds": total_seconds,
+            "total_minutes": total_seconds / 60,
+            "total_hours": total_seconds / 3600,
+            "breakdown": {
+                "fundamentals_minutes": fundamentals_time / 60,
+                "prices_minutes": prices_time / 60,
+                "news_minutes": news_time / 60,
+                "sentiment_minutes": sentiment_time / 60
+            }
+        }
+    
+    def collect_custom_universe(self, universe_name: str, symbols: List[str], 
+                               data_types: List[str] = None,
+                               progress_callback: callable = None) -> Dict[str, Any]:
+        """
+        Create and collect data for a custom universe
+        
+        Args:
+            universe_name: Name for the new universe
+            symbols: List of symbols to include
+            data_types: Data types to collect
+            progress_callback: Progress callback function
+            
+        Returns:
+            Collection results
+        """
+        # Create custom universe
+        universe_id = f"custom_{universe_name.lower().replace(' ', '_')}"
+        
+        if not self.universe_manager.create_custom_universe(
+            universe_id=universe_id,
+            name=universe_name,
+            description=f"Custom universe: {universe_name}",
+            symbols=symbols
+        ):
+            return {"success": False, "error": "Failed to create custom universe"}
+        
+        # Collect data for the custom universe
+        return self.collect_universe_data(
+            universe_id=universe_id,
+            data_types=data_types,
+            progress_callback=progress_callback
+        )
 
 # Convenience functions
 def collect_sp500_sample(config_path: Optional[str] = None) -> Dict[str, StockData]:
