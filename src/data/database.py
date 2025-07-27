@@ -694,14 +694,14 @@ class DatabaseManager:
              eps, pe_ratio, forward_pe, peg_ratio, price_to_book, enterprise_value, ev_to_ebitda,
              return_on_equity, return_on_assets, debt_to_equity, current_ratio, quick_ratio,
              revenue_growth, earnings_growth, current_price, market_cap, beta, dividend_yield,
-             week_52_high, week_52_low, source, quality_score, collection_date)
+             week_52_high, week_52_low, source, quality_score, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         '''
         
         # Extract values with defaults
-        # CRITICAL: Separate reporting_date from collection_date for proper data versioning
+        # CRITICAL: Separate reporting_date from created_at for proper data versioning
         reporting_date = fundamental_dict.get('reporting_date', datetime.now().date())
-        collection_date = datetime.now()  # Always use current time for collection
+        created_at = datetime.now()  # Always use current time for collection
         
         values = (
             symbol,
@@ -732,11 +732,11 @@ class DatabaseManager:
             fundamental_dict.get('market_cap'),
             fundamental_dict.get('beta'),
             fundamental_dict.get('dividend_yield'),
-            fundamental_dict.get('52_week_high'),
-            fundamental_dict.get('52_week_low'),
+            fundamental_dict.get('week_52_high'),
+            fundamental_dict.get('week_52_low'),
             fundamental_dict.get('data_source', 'yahoo_finance'),
             1.0,  # Quality score
-            collection_date  # When the data was COLLECTED
+            created_at  # When the data was COLLECTED
         )
         
         cursor.execute(sql, values)

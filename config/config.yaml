@@ -22,6 +22,10 @@ data_sources:
       - "investing"
       - "stocks" 
       - "SecurityAnalysis"
+      - "StockMarket"
+      - "ValueInvesting"
+      - "pennystocks"
+      - "wallstreetbets"
     timeout: 30
 
 # Database
@@ -40,7 +44,7 @@ stocks:
     - "NVDA"   # NVIDIA
     - "TSLA"   # Tesla
     - "META"   # Meta
-    - "BRK.B"  # Berkshire Hathaway
+    - "BRK-B"  # Berkshire Hathaway
     - "UNH"    # UnitedHealth
     - "JNJ"    # Johnson & Johnson
     - "JPM"    # JPMorgan Chase

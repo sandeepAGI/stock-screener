@@ -120,7 +120,7 @@ This provides a reasonable proxy while maintaining scoring consistency.
 PEG Ratio = (P/E Ratio) / (Earnings Growth Rate %)
 ```
 
-**Data Source:** Yahoo Finance `peg_ratio` field, with fallback calculation using `pe_ratio` and `earnings_growth`
+**Data Source:** Yahoo Finance `trailingPegRatio` field (trailing P/E divided by trailing earnings growth rate)
 
 **Scoring Methodology:**
 - Lower PEG ratios indicate better value relative to growth
@@ -301,7 +301,7 @@ Where:
 #### 1.5.3 Missing Data Handling
 - **P/E Ratio:** Zero score if negative earnings or missing data
 - **EV/EBITDA:** Fallback to EV/Operating Cash Flow approximation
-- **PEG Ratio:** Calculate from P/E and growth rate if not directly available
+- **PEG Ratio:** Uses Yahoo Finance trailingPegRatio directly
 - **FCF Yield:** Zero score if negative FCF or missing market cap
 
 ### 1.6 Limitations and Assumptions

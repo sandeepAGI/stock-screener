@@ -125,7 +125,7 @@ class YahooFinanceCollector:
                 # Valuation metrics (40% weight)
                 'pe_ratio': info.get('trailingPE'),
                 'forward_pe': info.get('forwardPE'),
-                'peg_ratio': info.get('pegRatio'),
+                'peg_ratio': info.get('trailingPegRatio'),
                 'price_to_book': info.get('priceToBook'),
                 'enterprise_value': info.get('enterpriseValue'),
                 'ev_to_ebitda': info.get('enterpriseToEbitda'),
@@ -156,8 +156,8 @@ class YahooFinanceCollector:
                 'dividend_yield': info.get('dividendYield'),
                 'payout_ratio': info.get('payoutRatio'),
                 'beta': info.get('beta'),
-                '52_week_high': info.get('fiftyTwoWeekHigh'),
-                '52_week_low': info.get('fiftyTwoWeekLow'),
+                'week_52_high': info.get('fiftyTwoWeekHigh'),
+                'week_52_low': info.get('fiftyTwoWeekLow'),
                 
                 # Collection metadata
                 'data_date': datetime.now().isoformat(),
@@ -264,7 +264,7 @@ class RedditCollector:
                     
                     # Search recent posts
                     for post in subreddit.search(f"{symbol} OR ${symbol}", 
-                                               time_filter="week", 
+                                               time_filter="month", 
                                                sort="new", 
                                                limit=max_posts // len(self.subreddits)):
                         
@@ -797,7 +797,7 @@ class DataCollectionOrchestrator:
                     if 'sentiment' in data_types:
                         try:
                             # Collect Reddit sentiment data
-                            reddit_posts = self.reddit_collector.collect_stock_mentions(symbol)
+                            reddit_posts = self.reddit_collector.collect_stock_mentions(symbol, days_back=30, max_posts=50)
                             if reddit_posts:
                                 # Convert to RedditPost objects
                                 from src.data.database import RedditPost
