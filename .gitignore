@@ -34,6 +34,17 @@ data/*.db
 data/*.sqlite
 data/*.sqlite3
 
+# Data files
+data/*.csv
+data/*.json
+data/*.parquet
+data/*.pkl
+data/*.xlsx
+*.csv
+*.json
+*.parquet
+*.pkl
+
 # IDE
 .vscode/
 .idea/
