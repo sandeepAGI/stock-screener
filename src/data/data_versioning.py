@@ -91,7 +91,7 @@ class DataVersionManager:
             
             data = dict(row)
             
-            # CRITICAL FIX: Properly separate reporting_date from collection_date
+            # FIXED: Use actual schema columns - reporting_date and created_at
             reporting_date = None
             collection_date = None
             
@@ -99,11 +99,11 @@ class DataVersionManager:
             if data.get('reporting_date'):
                 reporting_date = self._parse_date_safely(data['reporting_date'])
             
-            # Parse collection_date (when the data was COLLECTED)
-            if data.get('collection_date'):
-                collection_date = self._parse_date_safely(data['collection_date'])
-                if collection_date is None:
-                    collection_date = reporting_date  # Fallback to reporting date
+            # Parse created_at as collection_date (when the data was COLLECTED)
+            if data.get('created_at'):
+                collection_date = self._parse_date_safely(data['created_at'])
+            elif reporting_date:
+                collection_date = reporting_date  # Fallback to reporting date
             
             version_info = self._calculate_data_freshness(
                 data_type='fundamentals',

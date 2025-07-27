@@ -23,18 +23,57 @@ def adapt_date(d):
     return d.isoformat()
 
 def convert_datetime(val):
-    """Converter for datetime objects"""
-    return datetime.fromisoformat(val.decode())
+    """Robust converter for datetime objects - handles mixed formats"""
+    try:
+        val_str = val.decode() if isinstance(val, bytes) else str(val)
+        
+        # Handle ISO format (new): "2025-07-27T09:02:48.812129"
+        if 'T' in val_str:
+            return datetime.fromisoformat(val_str)
+        
+        # Handle old format: "2025-07-27 10:48:26"
+        elif ' ' in val_str:
+            return datetime.strptime(val_str, '%Y-%m-%d %H:%M:%S')
+        
+        # Handle date-only format: "2025-07-27"
+        else:
+            return datetime.strptime(val_str, '%Y-%m-%d')
+            
+    except (ValueError, AttributeError) as e:
+        logger.warning(f"Failed to parse datetime '{val}': {e}")
+        return None
 
 def convert_date(val):
-    """Converter for date objects"""
-    return date.fromisoformat(val.decode())
+    """Robust converter for date objects"""
+    try:
+        val_str = val.decode() if isinstance(val, bytes) else str(val)
+        
+        # Handle ISO format: "2025-07-27"
+        if len(val_str) == 10 and '-' in val_str:
+            return date.fromisoformat(val_str)
+        
+        # Handle datetime string - extract date part
+        elif 'T' in val_str or ' ' in val_str:
+            dt = convert_datetime(val)
+            return dt.date() if dt else None
+        
+        else:
+            return date.fromisoformat(val_str)
+            
+    except (ValueError, AttributeError) as e:
+        logger.warning(f"Failed to parse date '{val}': {e}")
+        return None
+
+def convert_timestamp(val):
+    """Converter for TIMESTAMP columns - handles mixed formats"""
+    return convert_datetime(val)
 
 # Register the adapters and converters
 sqlite3.register_adapter(datetime, adapt_datetime)
 sqlite3.register_adapter(date, adapt_date)
 sqlite3.register_converter("datetime", convert_datetime)
 sqlite3.register_converter("date", convert_date)
+sqlite3.register_converter("timestamp", convert_timestamp)  # Handle TIMESTAMP columns
 
 logger = logging.getLogger(__name__)
 
