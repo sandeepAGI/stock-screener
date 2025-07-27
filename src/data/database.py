@@ -13,6 +13,29 @@ import json
 
 from src.utils.helpers import load_config
 
+# Configure SQLite datetime adapters to fix Python 3.12 deprecation warnings
+def adapt_datetime(dt):
+    """Adapter for datetime objects"""
+    return dt.isoformat()
+
+def adapt_date(d):
+    """Adapter for date objects"""
+    return d.isoformat()
+
+def convert_datetime(val):
+    """Converter for datetime objects"""
+    return datetime.fromisoformat(val.decode())
+
+def convert_date(val):
+    """Converter for date objects"""
+    return date.fromisoformat(val.decode())
+
+# Register the adapters and converters
+sqlite3.register_adapter(datetime, adapt_datetime)
+sqlite3.register_adapter(date, adapt_date)
+sqlite3.register_converter("datetime", convert_datetime)
+sqlite3.register_converter("date", convert_date)
+
 logger = logging.getLogger(__name__)
 
 @dataclass
@@ -72,9 +95,23 @@ class DatabaseManager:
         self.connection = None
         
     def connect(self):
-        """Establish database connection"""
+        """Establish database connection (only if not already connected)"""
+        # Check if connection already exists and is valid
+        if self.connection:
+            try:
+                # Test the connection with a simple query
+                self.connection.execute("SELECT 1")
+                return True
+            except:
+                # Connection is invalid, need to reconnect
+                self.connection = None
+        
         try:
-            self.connection = sqlite3.connect(self.db_path, check_same_thread=False)
+            self.connection = sqlite3.connect(
+                self.db_path, 
+                check_same_thread=False,
+                detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES
+            )
             self.connection.row_factory = sqlite3.Row  # Enable column access by name
             logger.info(f"Connected to database: {self.db_path}")
             return True
@@ -104,11 +141,9 @@ class DatabaseManager:
             
             cursor = self.connection.cursor()
             
-            # Get table statistics
-            tables = [
-                'stocks', 'price_data', 'fundamental_data', 
-                'news_articles', 'reddit_posts', 'daily_sentiment'
-            ]
+            # Get table statistics dynamically
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+            tables = [row[0] for row in cursor.fetchall()]
             
             for table in tables:
                 table_stats = self._get_table_statistics(cursor, table)
@@ -270,10 +305,12 @@ class DatabaseManager:
                 return {}
         
         record_counts = {}
-        tables = [
-            'stocks', 'price_data', 'fundamental_data', 
-            'news_articles', 'reddit_posts', 'daily_sentiment'
-        ]
+        
+        # Get table names dynamically
+        cursor = self.connection.cursor()
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+        tables = [row[0] for row in cursor.fetchall()]
+        cursor.close()
         
         try:
             cursor = self.connection.cursor()
@@ -446,6 +483,7 @@ class DatabaseManager:
                     -- Metadata
                     source VARCHAR(50),
                     quality_score DECIMAL(3,2),
+                    collection_date TIMESTAMP,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     
                     FOREIGN KEY (symbol) REFERENCES stocks(symbol),
@@ -592,23 +630,26 @@ class DatabaseManager:
         cursor = self.connection.cursor()
         
         if isinstance(price_data, pd.DataFrame):
-            # Handle DataFrame input
+            # Handle DataFrame input with batch processing and transaction integrity
+            sql = '''
+                INSERT OR REPLACE INTO price_data
+                (symbol, date, open, high, low, close, volume, adjusted_close, source, quality_score)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            '''
+            
+            batch_data = []
             for index, row in price_data.iterrows():
-                sql = '''
-                    INSERT OR REPLACE INTO price_data
-                    (symbol, date, open, high, low, close, volume, adjusted_close, source, quality_score)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                '''
-                
                 # Handle adjusted close if available
                 adj_close = row.get('Adj Close', row['Close'])
                 
-                cursor.execute(sql, (
+                batch_data.append((
                     symbol, index.date(), row['Open'], row['High'], 
                     row['Low'], row['Close'], row['Volume'], adj_close, 
                     source, 1.0  # Assume good quality for Yahoo Finance
                 ))
             
+            # Execute all inserts in a single transaction
+            cursor.executemany(sql, batch_data)
             record_count = len(price_data)
         
         elif isinstance(price_data, dict):
@@ -653,14 +694,18 @@ class DatabaseManager:
              eps, pe_ratio, forward_pe, peg_ratio, price_to_book, enterprise_value, ev_to_ebitda,
              return_on_equity, return_on_assets, debt_to_equity, current_ratio, quick_ratio,
              revenue_growth, earnings_growth, current_price, market_cap, beta, dividend_yield,
-             week_52_high, week_52_low, source, quality_score)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             week_52_high, week_52_low, source, quality_score, collection_date)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         '''
         
         # Extract values with defaults
+        # CRITICAL: Separate reporting_date from collection_date for proper data versioning
+        reporting_date = fundamental_dict.get('reporting_date', datetime.now().date())
+        collection_date = datetime.now()  # Always use current time for collection
+        
         values = (
             symbol,
-            fundamental_dict.get('reporting_date', datetime.now().date()),  # Use provided or current date
+            reporting_date,  # When the data is FOR (quarterly report date)
             fundamental_dict.get('total_revenue'),
             fundamental_dict.get('net_income'),
             fundamental_dict.get('total_assets'),
@@ -690,7 +735,8 @@ class DatabaseManager:
             fundamental_dict.get('52_week_high'),
             fundamental_dict.get('52_week_low'),
             fundamental_dict.get('data_source', 'yahoo_finance'),
-            1.0  # Quality score
+            1.0,  # Quality score
+            collection_date  # When the data was COLLECTED
         )
         
         cursor.execute(sql, values)
@@ -699,7 +745,7 @@ class DatabaseManager:
         logger.info(f"Inserted fundamental data for {symbol}")
     
     def insert_news_articles(self, articles: List[NewsArticle]):
-        """Insert news articles"""
+        """Insert news articles with batch processing and transaction integrity"""
         cursor = self.connection.cursor()
         
         sql = '''
@@ -708,19 +754,23 @@ class DatabaseManager:
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         '''
         
+        # Prepare batch data
+        batch_data = []
         for article in articles:
-            cursor.execute(sql, (
+            batch_data.append((
                 article.symbol, article.title, article.summary, article.content,
                 article.publisher, article.publish_date, article.url,
                 article.sentiment_score, article.data_quality_score
             ))
         
+        # Execute all inserts in a single transaction
+        cursor.executemany(sql, batch_data)
         self.connection.commit()
         cursor.close()
         logger.info(f"Inserted {len(articles)} news articles")
     
     def insert_reddit_posts(self, posts: List[RedditPost]):
-        """Insert Reddit posts"""
+        """Insert Reddit posts with batch processing and transaction integrity"""
         cursor = self.connection.cursor()
         
         sql = '''
@@ -730,13 +780,17 @@ class DatabaseManager:
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         '''
         
+        # Prepare batch data
+        batch_data = []
         for post in posts:
-            cursor.execute(sql, (
+            batch_data.append((
                 post.symbol, post.post_id, post.title, post.content, post.subreddit,
                 post.author, post.score, post.upvote_ratio, post.num_comments,
                 post.created_utc, post.url, post.sentiment_score, post.data_quality_score
             ))
         
+        # Execute all inserts in a single transaction
+        cursor.executemany(sql, batch_data)
         self.connection.commit()
         cursor.close()
         logger.info(f"Inserted {len(posts)} Reddit posts")

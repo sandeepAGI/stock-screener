@@ -106,6 +106,65 @@ class StockUniverseManager:
             logger.error(f"Error loading universes: {e}")
             self.universes = {}
     
+    def _convert_to_stock_info(self, symbol: str, stock_data: Any) -> StockInfo:
+        """
+        Convert various stock data formats to StockInfo dataclass
+        
+        Args:
+            symbol: Stock symbol
+            stock_data: Stock data in any format (dict, partial StockInfo, etc.)
+            
+        Returns:
+            StockInfo dataclass with proper defaults
+        """
+        if isinstance(stock_data, StockInfo):
+            return stock_data
+        
+        # Handle dict input
+        if isinstance(stock_data, dict):
+            # Parse dates if they're strings
+            added_date = stock_data.get('added_date', datetime.now())
+            if isinstance(added_date, str):
+                try:
+                    added_date = datetime.fromisoformat(added_date)
+                except:
+                    added_date = datetime.now()
+            
+            last_updated = stock_data.get('last_updated', datetime.now())
+            if isinstance(last_updated, str):
+                try:
+                    last_updated = datetime.fromisoformat(last_updated)
+                except:
+                    last_updated = datetime.now()
+            
+            return StockInfo(
+                symbol=symbol,
+                company_name=stock_data.get('company_name', f'{symbol} Inc.'),
+                sector=stock_data.get('sector', 'Unknown'),
+                industry=stock_data.get('industry', 'Unknown'),
+                market_cap=stock_data.get('market_cap'),
+                exchange=stock_data.get('exchange', 'Unknown'),
+                added_date=added_date,
+                is_active=stock_data.get('is_active', True),
+                data_quality_score=stock_data.get('data_quality_score', 0.7),
+                last_updated=last_updated
+            )
+        
+        # Handle other types or create minimal StockInfo
+        logger.warning(f"Converting unknown stock data type for {symbol}: {type(stock_data)}")
+        return StockInfo(
+            symbol=symbol,
+            company_name=f'{symbol} Inc.',
+            sector='Unknown',
+            industry='Unknown',
+            market_cap=None,
+            exchange='Unknown',
+            added_date=datetime.now(),
+            is_active=True,
+            data_quality_score=0.5,
+            last_updated=datetime.now()
+        )
+    
     def save_universes(self):
         """Save universes to storage"""
         try:
@@ -128,24 +187,18 @@ class StockUniverseManager:
                     if isinstance(metadata.get('universe_type'), UniverseType):
                         metadata['universe_type'] = metadata['universe_type'].value
                 
-                # Convert stock info
+                # Convert stock info - CRITICAL: Ensure all stock data is StockInfo dataclass
                 if 'stocks' in universe_data:
                     for symbol, stock_info in universe_data['stocks'].items():
-                        if isinstance(stock_info, StockInfo):
-                            stock_dict = asdict(stock_info)
-                            stock_dict['added_date'] = stock_dict['added_date'].isoformat()
-                            stock_dict['last_updated'] = stock_dict['last_updated'].isoformat()
-                            saved_universe['stocks'][symbol] = stock_dict
-                        elif isinstance(stock_info, dict):
-                            # Handle datetime objects in dict
-                            stock_dict = stock_info.copy()
-                            if 'added_date' in stock_dict and isinstance(stock_dict['added_date'], datetime):
-                                stock_dict['added_date'] = stock_dict['added_date'].isoformat()
-                            if 'last_updated' in stock_dict and isinstance(stock_dict['last_updated'], datetime):
-                                stock_dict['last_updated'] = stock_dict['last_updated'].isoformat()
-                            saved_universe['stocks'][symbol] = stock_dict
-                        else:
-                            saved_universe['stocks'][symbol] = stock_info
+                        # Convert to StockInfo if it's not already
+                        if not isinstance(stock_info, StockInfo):
+                            stock_info = self._convert_to_stock_info(symbol, stock_info)
+                        
+                        # Convert StockInfo to serializable dict
+                        stock_dict = asdict(stock_info)
+                        stock_dict['added_date'] = stock_dict['added_date'].isoformat()
+                        stock_dict['last_updated'] = stock_dict['last_updated'].isoformat()
+                        saved_universe['stocks'][symbol] = stock_dict
                 
                 data_to_save['universes'][universe_id] = saved_universe
             
@@ -363,33 +416,71 @@ class StockUniverseManager:
             return False
     
     def _validate_symbols(self, symbols: List[str]) -> List[str]:
-        """Validate symbols exist and have data"""
+        """Validate symbols exist and have data using efficient batch processing"""
         validated = []
         
-        logger.info(f"Validating {len(symbols)} symbols...")
+        logger.info(f"Validating {len(symbols)} symbols using batch processing...")
         
-        for i, symbol in enumerate(symbols):
+        # Process symbols in batches for better efficiency
+        batch_size = 20  # Process 20 symbols at once
+        total_batches = (len(symbols) + batch_size - 1) // batch_size
+        
+        for batch_idx in range(0, len(symbols), batch_size):
+            batch_symbols = symbols[batch_idx:batch_idx + batch_size]
+            batch_num = (batch_idx // batch_size) + 1
+            
+            logger.info(f"Processing batch {batch_num}/{total_batches} ({len(batch_symbols)} symbols)")
+            
             try:
-                ticker = yf.Ticker(symbol)
-                info = ticker.info
+                # Use yfinance's ability to download data for multiple tickers
+                # Create ticker objects in batch
+                tickers = yf.Tickers(' '.join(batch_symbols))
                 
-                # Basic validation - check if we get meaningful data
-                if info and len(info) > 5 and (info.get('symbol') or info.get('longName')):
-                    validated.append(symbol)
-                else:
-                    logger.warning(f"Symbol {symbol} failed validation")
-                    
-                # Progress update every 50 symbols
-                if (i + 1) % 50 == 0:
-                    logger.info(f"Validated {i + 1}/{len(symbols)} symbols ({len(validated)} valid)")
-                    
-                # Small delay to respect rate limits
-                time.sleep(0.05)  # 50ms delay
+                # Validate each symbol in the batch
+                for symbol in batch_symbols:
+                    try:
+                        ticker = tickers.tickers[symbol]
+                        info = ticker.info
+                        
+                        # Basic validation - check if we get meaningful data
+                        if info and len(info) > 5 and (info.get('symbol') or info.get('longName')):
+                            validated.append(symbol)
+                            logger.debug(f"✓ {symbol} validated")
+                        else:
+                            logger.warning(f"✗ Symbol {symbol} failed validation (insufficient data)")
+                            
+                    except Exception as e:
+                        logger.warning(f"✗ Validation failed for {symbol}: {e}")
+                
+                # Respectful delay between batches
+                if batch_num < total_batches:
+                    time.sleep(1.0)  # 1 second between batches
                     
             except Exception as e:
-                logger.warning(f"Validation failed for {symbol}: {e}")
+                logger.warning(f"Batch validation failed for batch {batch_num}, falling back to individual validation: {e}")
+                
+                # Fallback to individual validation for this batch
+                for symbol in batch_symbols:
+                    try:
+                        ticker = yf.Ticker(symbol)
+                        info = ticker.info
+                        
+                        if info and len(info) > 5 and (info.get('symbol') or info.get('longName')):
+                            validated.append(symbol)
+                        else:
+                            logger.warning(f"Symbol {symbol} failed individual validation")
+                            
+                        time.sleep(0.1)  # Small delay for individual requests
+                        
+                    except Exception as individual_e:
+                        logger.warning(f"Individual validation failed for {symbol}: {individual_e}")
+            
+            # Progress update
+            validated_count = len(validated)
+            processed_count = min(batch_idx + batch_size, len(symbols))
+            logger.info(f"Progress: {processed_count}/{len(symbols)} processed, {validated_count} validated")
         
-        logger.info(f"Validation complete: {len(validated)}/{len(symbols)} symbols validated")
+        logger.info(f"Batch validation complete: {len(validated)}/{len(symbols)} symbols validated")
         return validated
     
     def _save_sp500_csv(self, stock_info_dict: Dict[str, StockInfo]):

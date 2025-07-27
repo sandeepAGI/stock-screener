@@ -71,6 +71,40 @@ dashboard:
   layout: "wide"
   sidebar_expanded: true
   
+# API Configuration Templates
+api_templates:
+  yahoo_finance:
+    description: "Yahoo Finance API (yfinance library)"
+    required_fields: []  # No credentials required for basic access
+    optional_fields: []
+    test_endpoint: "stock_info"
+    rate_limits:
+      requests_per_hour: 2000
+  
+  reddit:
+    description: "Reddit API for sentiment analysis"
+    required_fields: ["client_id", "client_secret", "user_agent"]
+    optional_fields: ["username", "password"]
+    test_endpoint: "subreddit_access"
+    rate_limits:
+      requests_per_minute: 60
+  
+  alpha_vantage:
+    description: "Alpha Vantage API for additional financial data"
+    required_fields: ["api_key"]
+    optional_fields: []
+    test_endpoint: "quote_data"
+    rate_limits:
+      requests_per_minute: 5
+  
+  news_api:
+    description: "News API for additional news sources"
+    required_fields: ["api_key"]
+    optional_fields: []
+    test_endpoint: "headlines"
+    rate_limits:
+      requests_per_day: 1000
+
 # Logging
 logging:
   level: "INFO"

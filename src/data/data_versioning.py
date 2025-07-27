@@ -48,32 +48,16 @@ class VersionedData:
 class DataVersionManager:
     """Manages data versions and staleness indicators for analysis components"""
     
-    def __init__(self, db_manager):
+    def __init__(self, db_manager, config_manager=None):
         self.db_manager = db_manager
+        self.config_manager = config_manager
         
-        # Freshness thresholds (in days)
-        self.freshness_thresholds = {
-            'fundamentals': {
-                'fresh': 1,
-                'recent': 30,     # Quarterly reports
-                'stale': 120,     # ~4 months
-            },
-            'price': {
-                'fresh': 1,
-                'recent': 3,      # Weekend gap
-                'stale': 7,       # Week old
-            },
-            'news': {
-                'fresh': 1,
-                'recent': 7,      # Week old news
-                'stale': 30,      # Month old
-            },
-            'sentiment': {
-                'fresh': 1,
-                'recent': 7,
-                'stale': 14,      # Two weeks
-            }
-        }
+        # Load freshness thresholds from config or use defaults
+        if config_manager and hasattr(config_manager, 'system_config') and config_manager.system_config:
+            staleness_limits = getattr(config_manager.methodology_config, 'staleness_limits', {}) if config_manager.methodology_config else {}
+            self.freshness_thresholds = self._build_freshness_thresholds(staleness_limits)
+        else:
+            self.freshness_thresholds = self._get_default_freshness_thresholds()
         
         # Staleness impact on scoring (multiplier)
         self.staleness_multipliers = {
@@ -107,21 +91,19 @@ class DataVersionManager:
             
             data = dict(row)
             
-            # Calculate freshness using reporting_date for both data and collection dates
-            # Since fundamental data is typically collected close to reporting date
+            # CRITICAL FIX: Properly separate reporting_date from collection_date
             reporting_date = None
-            if data.get('reporting_date'):
-                try:
-                    # Handle both date and datetime strings
-                    date_str = data['reporting_date']
-                    if 'T' in date_str:
-                        reporting_date = datetime.fromisoformat(date_str)
-                    else:
-                        reporting_date = datetime.strptime(date_str, '%Y-%m-%d')
-                except (ValueError, TypeError):
-                    pass
+            collection_date = None
             
-            collection_date = reporting_date  # Use same date for collection
+            # Parse reporting_date (when the data is FOR)
+            if data.get('reporting_date'):
+                reporting_date = self._parse_date_safely(data['reporting_date'])
+            
+            # Parse collection_date (when the data was COLLECTED)
+            if data.get('collection_date'):
+                collection_date = self._parse_date_safely(data['collection_date'])
+                if collection_date is None:
+                    collection_date = reporting_date  # Fallback to reporting date
             
             version_info = self._calculate_data_freshness(
                 data_type='fundamentals',
@@ -173,7 +155,7 @@ class DataVersionManager:
             data = dict(row)
             
             # Price data uses the trading date as both data and collection date
-            data_date = datetime.fromisoformat(data['data_date']) if data.get('data_date') else None
+            data_date = self._parse_date_safely(data.get('data_date'))
             
             version_info = self._calculate_data_freshness(
                 data_type='price',
@@ -225,7 +207,7 @@ class DataVersionManager:
             articles = [dict(row) for row in rows]
             latest_article = articles[0]
             
-            data_date = datetime.fromisoformat(latest_article['data_date']) if latest_article.get('data_date') else None
+            data_date = self._parse_date_safely(latest_article.get('data_date'))
             
             version_info = self._calculate_data_freshness(
                 data_type='news',
@@ -283,7 +265,7 @@ class DataVersionManager:
             
             data = dict(row)
             
-            data_date = datetime.fromisoformat(data['data_date']) if data.get('data_date') else None
+            data_date = self._parse_date_safely(data.get('data_date'))
             
             version_info = self._calculate_data_freshness(
                 data_type='sentiment',
@@ -467,3 +449,108 @@ class DataVersionManager:
         report['freshness_distribution'] = freshness_counts
         
         return report
+    
+    def _get_default_freshness_thresholds(self) -> Dict[str, Dict[str, int]]:
+        """Get default freshness thresholds"""
+        return {
+            'fundamentals': {
+                'fresh': 1,
+                'recent': 30,     # Quarterly reports
+                'stale': 120,     # ~4 months
+            },
+            'price': {
+                'fresh': 1,
+                'recent': 3,      # Weekend gap
+                'stale': 7,       # Week old
+            },
+            'news': {
+                'fresh': 1,
+                'recent': 7,      # Week old news
+                'stale': 30,      # Month old
+            },
+            'sentiment': {
+                'fresh': 1,
+                'recent': 7,
+                'stale': 14,      # Two weeks
+            }
+        }
+    
+    def _build_freshness_thresholds(self, staleness_limits: Dict[str, int]) -> Dict[str, Dict[str, int]]:
+        """Build freshness thresholds from configuration staleness limits"""
+        defaults = self._get_default_freshness_thresholds()
+        
+        # Map config keys to data types
+        config_mapping = {
+            'fundamentals_days': 'fundamentals',
+            'price_days': 'price',
+            'news_days': 'news',
+            'sentiment_days': 'sentiment'
+        }
+        
+        for config_key, data_type in config_mapping.items():
+            if config_key in staleness_limits:
+                max_days = staleness_limits[config_key]
+                # Set thresholds as fractions of max days
+                defaults[data_type] = {
+                    'fresh': max(1, max_days // 10),      # 10% of max
+                    'recent': max(2, max_days // 3),       # 33% of max  
+                    'stale': max_days                      # Max configured days
+                }
+        
+        return defaults
+    
+    def _parse_date_safely(self, date_input) -> Optional[datetime]:
+        """
+        Centralized date parsing to handle inconsistent date formats
+        
+        Args:
+            date_input: String, datetime, or date object
+            
+        Returns:
+            datetime object or None if parsing fails
+        """
+        if date_input is None:
+            return None
+        
+        # If already a datetime, return it
+        if isinstance(date_input, datetime):
+            return date_input
+        
+        # If it's a date object, convert to datetime
+        if hasattr(date_input, 'year') and hasattr(date_input, 'month'):
+            try:
+                return datetime.combine(date_input, datetime.min.time())
+            except:
+                pass
+        
+        # If it's a string, try multiple formats
+        if isinstance(date_input, str):
+            date_formats = [
+                '%Y-%m-%d %H:%M:%S',      # Full datetime
+                '%Y-%m-%dT%H:%M:%S',      # ISO format without timezone
+                '%Y-%m-%dT%H:%M:%SZ',     # ISO format with Z
+                '%Y-%m-%d',               # Date only
+                '%Y/%m/%d',               # Alternative date format
+                '%m/%d/%Y',               # US date format
+                '%d/%m/%Y',               # European date format
+            ]
+            
+            # Try ISO format first (most reliable)
+            try:
+                # Handle timezone info
+                if 'T' in date_input:
+                    clean_date = date_input.replace('Z', '+00:00') if date_input.endswith('Z') else date_input
+                    return datetime.fromisoformat(clean_date.split('+')[0].split('Z')[0])
+            except:
+                pass
+            
+            # Try other formats
+            for fmt in date_formats:
+                try:
+                    return datetime.strptime(date_input, fmt)
+                except:
+                    continue
+        
+        # If all parsing fails, log warning and return None
+        logger.warning(f"Could not parse date: {date_input} (type: {type(date_input)})")
+        return None

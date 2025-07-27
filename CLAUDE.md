@@ -1,6 +1,6 @@
-Please review the technical_requirements file and come up with a plan to implement Phase 1, 2 and 3 of the requirements
-Phase 1 is absolutely critical to the success of the project and so let us spend as much time as needed to be able to get data for the S&P 500
-We need to evaluate each potential source and pick the one with the best data and least missing values
-It is important that we always test as we are going through phases - need to also do unit and regression testing
-Remember occam's razor 
-Ask when in doubt 
+Please review the README.md and the code base to understand the current state
+We are having issues in the data management module that we need to fix as a priority before we can proceed further
+Review DATA-TRACE.md which has results from a trace of the code base that I ran
+Go through each of the identified issues and first confirm if that is actually an issue or not
+If it is an issue, review the suggested fix, fix it, test to make sure that its working and then proceed to the next item
+Once we have fully reviewed and implemented all the recommendation, please rerun all our tests and we should get to 100% pass rate

@@ -72,17 +72,33 @@ class ConfigurationManager:
         
         # Initialize configuration
         self.api_credentials: Dict[str, APICredentials] = {}
+        self.api_templates: Dict[str, Dict[str, Any]] = {}
         self.methodology_config: Optional[MethodologyConfig] = None
         self.system_config: Optional[SystemConfig] = None
         
-        # Initialize API credential templates first
-        self._init_api_templates()
-        
-        # Load existing configuration
+        # Load existing configuration first
         self.load_configuration()
+        
+        # Then initialize API credential templates (which may use loaded config)
+        self._init_api_templates()
     
     def _init_api_templates(self):
-        """Initialize API credential templates"""
+        """Initialize API credential templates from configuration file"""
+        # Try to load API templates from configuration file
+        try:
+            if Path(self.config_path).exists():
+                with open(self.config_path, 'r') as f:
+                    config_data = yaml.safe_load(f)
+                
+                if config_data and 'api_templates' in config_data:
+                    self.api_templates = config_data['api_templates']
+                    logger.info(f"Loaded {len(self.api_templates)} API templates from configuration")
+                    return
+        except Exception as e:
+            logger.warning(f"Failed to load API templates from config: {e}")
+        
+        # Fallback to hardcoded templates if not in config
+        logger.warning("API templates not found in configuration, using fallback defaults")
         api_templates = {
             'yahoo_finance': {
                 'description': 'Yahoo Finance API (yfinance library)',
@@ -113,7 +129,6 @@ class ConfigurationManager:
                 'rate_limits': {'requests_per_day': 1000}
             }
         }
-        
         self.api_templates = api_templates
     
     def load_configuration(self) -> bool:

@@ -275,6 +275,12 @@ class RedditCollector:
                         # Check if symbol is actually mentioned in title or body
                         text_content = f"{post.title} {post.selftext}".upper()
                         if any(term.upper() in text_content for term in search_terms):
+                            # Get author name if available (some posts may be deleted/anonymous)
+                            try:
+                                author_name = str(post.author) if post.author else 'unknown'
+                            except:
+                                author_name = 'unknown'
+                            
                             posts.append({
                                 'id': post.id,
                                 'title': post.title,
@@ -285,6 +291,7 @@ class RedditCollector:
                                 'created_utc': post.created_utc,
                                 'subreddit': subreddit_name,
                                 'url': post.url,
+                                'author': author_name,
                                 'symbol': symbol
                             })
                             
@@ -731,18 +738,8 @@ class DataCollectionOrchestrator:
                     
                     if 'prices' in data_types and hasattr(stock_data.price_data, 'iterrows') and not stock_data.price_data.empty:
                         try:
-                            # Insert price data (convert DataFrame to records)
-                            for date, row in stock_data.price_data.iterrows():
-                                price_data = {
-                                    'date': date.strftime('%Y-%m-%d'),
-                                    'open': row.get('Open'),
-                                    'high': row.get('High'), 
-                                    'low': row.get('Low'),
-                                    'close': row.get('Close'),
-                                    'volume': row.get('Volume'),
-                                    'adjusted_close': row.get('Adj Close', row.get('Close'))
-                                }
-                                self.db_manager.insert_price_data(symbol, price_data)
+                            # Insert price data in batch (more efficient than individual inserts)
+                            self.db_manager.insert_price_data(symbol, stock_data.price_data)
                             symbol_results['prices'] = True
                         except Exception as e:
                             logger.error(f"Error inserting prices for {symbol}: {e}")
@@ -758,15 +755,23 @@ class DataCollectionOrchestrator:
                             from src.data.database import NewsArticle
                             news_articles = []
                             for news_item in stock_data.news_headlines:
-                                # Parse publish date from news data
-                                publish_date = datetime.now()  # Default fallback
+                                # Parse publish date from news data - CRITICAL: Use actual publish time, not current time
+                                publish_date = None
                                 if news_item.get('publish_time'):
                                     try:
                                         # Parse ISO format: '2025-07-27T09:45:00Z'
                                         publish_date = datetime.fromisoformat(news_item['publish_time'].replace('Z', '+00:00'))
                                     except:
-                                        # Keep fallback if parsing fails
-                                        pass
+                                        # Try alternative formats
+                                        try:
+                                            publish_date = datetime.strptime(news_item['publish_time'], '%Y-%m-%dT%H:%M:%S')
+                                        except:
+                                            logger.warning(f"Could not parse publish_time: {news_item.get('publish_time')}")
+                                
+                                # Only use current time as absolute fallback if no date could be parsed
+                                if publish_date is None:
+                                    publish_date = datetime.now()
+                                    logger.warning(f"Using current time as fallback for news article: {news_item.get('title', 'Unknown')[:50]}")
                                 
                                 article = NewsArticle(
                                     symbol=symbol,
@@ -804,7 +809,7 @@ class DataCollectionOrchestrator:
                                         title=post.get('title', ''),
                                         content=post.get('text', ''),
                                         subreddit=post.get('subreddit', ''),
-                                        author='unknown',  # Reddit API doesn't provide this in our collector
+                                        author=post.get('author', 'unknown'),  # Get actual author if available
                                         score=post.get('score', 0),
                                         upvote_ratio=post.get('upvote_ratio', 0.0),
                                         num_comments=post.get('num_comments', 0),
