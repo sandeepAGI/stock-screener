@@ -1,0 +1,57 @@
+{
+  "backup_info": {
+    "name": "S&P 500 Complete Baseline with Enhanced Sentiment",
+    "created_date": "2025-07-27T16:25:14.324063",
+    "version": "1.0-production",
+    "description": "Complete S&P 500 dataset with enhanced Reddit sentiment collection"
+  },
+  "data_coverage": {
+    "fundamental_data": {
+      "stocks_covered": 503,
+      "total_stocks": 503,
+      "coverage_percentage": 100.0
+    },
+    "price_data": {
+      "stocks_covered": 503,
+      "total_stocks": 503,
+      "coverage_percentage": 100.0
+    },
+    "news_articles": {
+      "stocks_covered": 503,
+      "total_stocks": 503,
+      "coverage_percentage": 100.0
+    },
+    "reddit_posts": {
+      "stocks_covered": 231,
+      "total_stocks": 503,
+      "coverage_percentage": 45.9
+    }
+  },
+  "data_volume": {
+    "fundamental_data": 985,
+    "price_data": 125751,
+    "news_articles": 12757,
+    "reddit_posts": 1415
+  },
+  "enhancement_details": {
+    "reddit_improvements": {
+      "original_coverage": "13.1%",
+      "enhanced_coverage": "45.9%",
+      "original_posts": 361,
+      "enhanced_posts": 1415,
+      "improvement_percentage": 292.0,
+      "subreddits_expanded": "3 \u2192 7 subreddits",
+      "time_window_expanded": "7 days \u2192 30 days"
+    },
+    "news_improvements": {
+      "coverage_fixed": "470/503 \u2192 503/503 (100%)",
+      "articles_added": 6916
+    }
+  },
+  "data_quality": {
+    "missing_company_names": 0,
+    "unknown_sectors": 0,
+    "data_integrity": "Perfect",
+    "total_database_records": 140908
+  }
+}
