@@ -39,18 +39,27 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for professional styling
+# Custom CSS for professional styling with branding
 st.markdown("""
 <style>
+    @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap');
+    
+    /* Global font application */
+    .main, .sidebar .sidebar-content, .stSelectbox, .stSlider, .stButton, 
+    .stTextInput, .stMetric, .stMarkdown, h1, h2, h3, h4, h5, h6, p, div {
+        font-family: 'Montserrat', sans-serif !important;
+    }
+    
     .main-header {
         font-size: 3rem;
         font-weight: 700;
-        color: #1f4e79;
+        color: #60B5E5 !important;
         text-align: center;
         margin-bottom: 1rem;
+        font-family: 'Montserrat', sans-serif !important;
     }
     .methodology-badge {
-        background: linear-gradient(90deg, #1f4e79, #2980b9);
+        background: linear-gradient(90deg, #60B5E5, #2980b9);
         color: white;
         padding: 0.5rem 1rem;
         border-radius: 20px;
@@ -58,6 +67,7 @@ st.markdown("""
         font-weight: 600;
         margin: 0.2rem;
         display: inline-block;
+        font-family: 'Montserrat', sans-serif !important;
     }
     .metric-card {
         background: #f8f9fa;
@@ -65,15 +75,16 @@ st.markdown("""
         border-radius: 10px;
         padding: 1rem;
         margin: 0.5rem 0;
+        font-family: 'Montserrat', sans-serif !important;
     }
-    .score-excellent { color: #28a745; font-weight: bold; }
-    .score-good { color: #17a2b8; font-weight: bold; }
-    .score-average { color: #ffc107; font-weight: bold; }
-    .score-poor { color: #fd7e14; font-weight: bold; }
-    .score-very-poor { color: #dc3545; font-weight: bold; }
-    .data-quality-high { color: #28a745; }
-    .data-quality-medium { color: #ffc107; }
-    .data-quality-low { color: #dc3545; }
+    .score-excellent { color: #28a745; font-weight: bold; font-family: 'Montserrat', sans-serif !important; }
+    .score-good { color: #17a2b8; font-weight: bold; font-family: 'Montserrat', sans-serif !important; }
+    .score-average { color: #ffc107; font-weight: bold; font-family: 'Montserrat', sans-serif !important; }
+    .score-poor { color: #fd7e14; font-weight: bold; font-family: 'Montserrat', sans-serif !important; }
+    .score-very-poor { color: #dc3545; font-weight: bold; font-family: 'Montserrat', sans-serif !important; }
+    .data-quality-high { color: #28a745; font-family: 'Montserrat', sans-serif !important; }
+    .data-quality-medium { color: #ffc107; font-family: 'Montserrat', sans-serif !important; }
+    .data-quality-low { color: #dc3545; font-family: 'Montserrat', sans-serif !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -140,7 +151,26 @@ def format_data_quality(quality: float) -> str:
 
 def render_methodology_overview():
     """Render methodology overview section"""
-    st.markdown('<h1 class="main-header">📊 StockAnalyzer Pro</h1>', unsafe_allow_html=True)
+    # Header with logo and brand styling
+    try:
+        # Create inline header with logo matching font size
+        header_html = '''
+        <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 1rem;">
+            <img src="data:image/png;base64,{}" style="height: 3rem; margin-right: 15px;" />
+            <h1 class="main-header" style="margin: 0;">StockAnalyzer Pro</h1>
+        </div>
+        '''
+        
+        # Read and encode the logo
+        import base64
+        with open("src/data/Logo-Element-Retina.png", "rb") as f:
+            logo_data = base64.b64encode(f.read()).decode()
+        
+        st.markdown(header_html.format(logo_data), unsafe_allow_html=True)
+    except:
+        # Fallback if logo not found
+        st.markdown('<h1 class="main-header">📊 StockAnalyzer Pro</h1>', unsafe_allow_html=True)
+    
     st.markdown("### Automated Stock Mispricing Detection System")
     
     col1, col2, col3, col4 = st.columns(4)

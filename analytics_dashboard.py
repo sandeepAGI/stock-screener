@@ -23,32 +23,67 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for professional styling
+# Custom CSS for professional styling with branding
 st.markdown("""
 <style>
+    @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700&display=swap');
+    
+    /* Global font application */
+    .main, .sidebar .sidebar-content, .stSelectbox, .stSlider, .stButton, 
+    .stTextInput, .stMetric, .stMarkdown, h1, h2, h3, h4, h5, h6, p, div {
+        font-family: 'Montserrat', sans-serif !important;
+    }
+    
+    /* Header styling with brand color */
+    .main-header {
+        color: #60B5E5 !important;
+        font-family: 'Montserrat', sans-serif !important;
+        font-weight: 700 !important;
+        font-size: 2.5rem !important;
+        text-align: center;
+        margin-bottom: 1rem;
+    }
+    
     .metric-container {
         background-color: #f0f2f6;
         padding: 1rem;
         border-radius: 0.5rem;
         text-align: center;
+        font-family: 'Montserrat', sans-serif !important;
     }
     .undervalued {
         border-left: 4px solid #00ff00;
         background-color: #f0fff0;
         padding: 0.5rem;
         margin: 0.25rem 0;
+        font-family: 'Montserrat', sans-serif !important;
     }
     .overvalued {
         border-left: 4px solid #ff0000;
         background-color: #fff0f0;
         padding: 0.5rem;
         margin: 0.25rem 0;
+        font-family: 'Montserrat', sans-serif !important;
     }
     .stock-details {
         background-color: #f8f9fa;
         padding: 1rem;
         border-radius: 0.5rem;
         margin: 0.5rem 0;
+        font-family: 'Montserrat', sans-serif !important;
+    }
+    
+    /* Logo container */
+    .logo-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin-bottom: 1rem;
+    }
+    
+    .logo-container img {
+        max-height: 80px;
+        width: auto;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -817,8 +852,25 @@ def main():
             st.session_state.reset_weights = True
             st.rerun()
     
-    # Header
-    st.title("📊 Stock Outlier Analysis - S&P 500")
+    # Header with logo and brand styling
+    try:
+        # Create inline header with logo matching font size
+        header_html = '''
+        <div style="display: flex; align-items: center; justify-content: center; margin-bottom: 1rem;">
+            <img src="data:image/png;base64,{}" style="height: 2.5rem; margin-right: 15px;" />
+            <h1 class="main-header" style="margin: 0;">Stock Outlier Analysis - S&P 500</h1>
+        </div>
+        '''
+        
+        # Read and encode the logo
+        import base64
+        with open("src/data/Logo-Element-Retina.png", "rb") as f:
+            logo_data = base64.b64encode(f.read()).decode()
+        
+        st.markdown(header_html.format(logo_data), unsafe_allow_html=True)
+    except:
+        # Fallback if logo not found
+        st.markdown('<h1 class="main-header">📊 Stock Outlier Analysis - S&P 500</h1>', unsafe_allow_html=True)
     st.markdown("### Professional Stock Mispricing Detection Dashboard")
     
     # Load data
