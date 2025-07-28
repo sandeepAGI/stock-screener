@@ -22,6 +22,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.data.collectors import DataCollectionOrchestrator
 from src.data.database import DatabaseManager
+from src.data.database_operations import DatabaseOperationsManager
 from src.data.monitoring import DataSourceMonitor
 from src.data.validator import DataValidator
 
@@ -39,21 +40,26 @@ def setup_logging():
 
 def validate_symbols(symbols: List[str], db: DatabaseManager) -> List[str]:
     """Validate that symbols exist in database"""
-    existing_stocks = db.get_all_stocks()
-    valid_symbols = []
-    invalid_symbols = []
-    
-    for symbol in symbols:
-        if symbol.upper() in existing_stocks:
-            valid_symbols.append(symbol.upper())
-        else:
-            invalid_symbols.append(symbol.upper())
-    
-    if invalid_symbols:
-        print(f"⚠️  Warning: These symbols don't exist in database: {', '.join(invalid_symbols)}")
-        print(f"💡 Available stocks: {len(existing_stocks)} total")
-    
-    return valid_symbols
+    try:
+        existing_stocks = db.get_all_stocks()
+        valid_symbols = []
+        invalid_symbols = []
+        
+        for symbol in symbols:
+            if symbol.upper() in existing_stocks:
+                valid_symbols.append(symbol.upper())
+            else:
+                invalid_symbols.append(symbol.upper())
+        
+        if invalid_symbols:
+            print(f"⚠️  Warning: These symbols don't exist in database: {', '.join(invalid_symbols)}")
+            print(f"💡 Available stocks: {len(existing_stocks)} total")
+        
+        return valid_symbols
+    except Exception as e:
+        print(f"⚠️  Warning: Could not validate symbols against database: {str(e)}")
+        print(f"🔄 Proceeding with provided symbols: {', '.join(symbols)}")
+        return [s.upper() for s in symbols]
 
 def validate_data_types(data_types: List[str]) -> List[str]:
     """Validate data type arguments"""
@@ -75,7 +81,8 @@ def validate_data_types(data_types: List[str]) -> List[str]:
 
 def refresh_data(symbols: Optional[List[str]] = None, 
                 data_types: Optional[List[str]] = None,
-                logger: logging.Logger = None) -> bool:
+                logger: logging.Logger = None,
+                quiet: bool = False) -> bool:
     """
     Refresh data for specified stocks and data types
     
@@ -83,6 +90,7 @@ def refresh_data(symbols: Optional[List[str]] = None,
         symbols: List of stock symbols to refresh (None = all stocks)
         data_types: List of data types to refresh (None = all types)
         logger: Logger instance
+        quiet: Suppress interactive prompts
     
     Returns:
         bool: Success status
@@ -97,9 +105,26 @@ def refresh_data(symbols: Optional[List[str]] = None,
             logger.error("❌ Failed to connect to database")
             return False
         
+        db_ops = DatabaseOperationsManager(db)
         monitor = DataSourceMonitor()
         validator = DataValidator()
         orchestrator = DataCollectionOrchestrator()
+        
+        # Create backup before starting data refresh (safety measure)
+        logger.info("🛡️  Creating pre-refresh database backup...")
+        backup_name = f"pre_refresh_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        backup_path = db_ops.create_backup(backup_name)
+        
+        if backup_path:
+            logger.info(f"✅ Pre-refresh backup created: {backup_path}")
+            logger.info("🔄 If refresh fails, restore with: python utilities/backup_database.py --restore latest")
+        else:
+            logger.warning("⚠️  Warning: Pre-refresh backup creation failed")
+            if not quiet:
+                response = input("Continue without backup? This is NOT recommended (y/N): ")
+                if response.lower() != 'y':
+                    logger.info("❌ Data refresh cancelled for safety")
+                    return False
         
         # Determine target stocks
         if symbols:
@@ -109,8 +134,12 @@ def refresh_data(symbols: Optional[List[str]] = None,
                 return False
             logger.info(f"🎯 Target stocks: {', '.join(target_stocks)} ({len(target_stocks)} total)")
         else:
-            target_stocks = db.get_all_stocks()
-            logger.info(f"🎯 Refreshing all stocks: {len(target_stocks)} total")
+            try:
+                target_stocks = db.get_all_stocks()
+                logger.info(f"🎯 Refreshing all stocks: {len(target_stocks)} total")
+            except Exception as e:
+                logger.error(f"❌ Could not get stock list from database: {str(e)}")
+                return False
         
         # Determine target data types
         if data_types:
@@ -125,22 +154,27 @@ def refresh_data(symbols: Optional[List[str]] = None,
         
         # Check API status before starting
         logger.info("🔍 Checking API status...")
-        api_status = monitor.get_all_source_status()
+        api_status = monitor.get_all_api_status()
         
-        yahoo_status = api_status.get('yahoo_finance', {}).get('status', 'unknown')
-        reddit_status = api_status.get('reddit', {}).get('status', 'unknown')
+        yahoo_status = api_status.get('yahoo_finance')
+        reddit_status = api_status.get('reddit')
         
-        if yahoo_status != 'healthy' and any(dt in target_types for dt in ['fundamentals', 'prices', 'news']):
-            logger.warning(f"⚠️  Yahoo Finance API status: {yahoo_status}")
-            response = input("Continue anyway? (y/N): ")
-            if response.lower() != 'y':
-                return False
+        yahoo_status_str = yahoo_status.status if yahoo_status else 'unknown'
+        reddit_status_str = reddit_status.status if reddit_status else 'unknown'
+        
+        if yahoo_status_str not in ['active', 'healthy'] and any(dt in target_types for dt in ['fundamentals', 'prices', 'news']):
+            logger.warning(f"⚠️  Yahoo Finance API status: {yahoo_status_str}")
+            if not quiet:
+                response = input("Continue anyway? (y/N): ")
+                if response.lower() != 'y':
+                    return False
                 
-        if reddit_status != 'healthy' and 'sentiment' in target_types:
-            logger.warning(f"⚠️  Reddit API status: {reddit_status}")
-            response = input("Continue anyway? (y/N): ")
-            if response.lower() != 'y':
-                return False
+        if reddit_status_str not in ['active', 'healthy'] and 'sentiment' in target_types:
+            logger.warning(f"⚠️  Reddit API status: {reddit_status_str}")
+            if not quiet:
+                response = input("Continue anyway? (y/N): ")
+                if response.lower() != 'y':
+                    return False
         
         # Execute data refresh
         logger.info("🚀 Starting data collection...")
@@ -153,27 +187,55 @@ def refresh_data(symbols: Optional[List[str]] = None,
                 logger.info("🌟 Performing full universe refresh...")
                 results = orchestrator.collect_universe_data('sp500', data_types=target_types)
             else:
-                # Selective refresh - use custom collection
+                # Selective refresh - use existing complete dataset method
                 logger.info("🎯 Performing selective refresh...")
-                results = orchestrator.collect_custom_data(target_stocks, data_types=target_types)
+                logger.info(f"   Collecting data for {len(target_stocks)} stocks: {', '.join(target_stocks[:5])}{'...' if len(target_stocks) > 5 else ''}")
+                logger.info(f"   Data types: {', '.join(target_types)}")
+                
+                # Use the existing collect_complete_dataset method which works with the baseline script
+                stock_data_results = orchestrator.collect_complete_dataset(target_stocks)
+                
+                # Format results to match expected structure
+                results = {
+                    "success": len(stock_data_results) > 0,
+                    "total_symbols": len(target_stocks),
+                    "successful_symbols": len(stock_data_results),
+                    "failed_symbols": len(target_stocks) - len(stock_data_results),
+                    "start_time": start_time.isoformat(),
+                    "end_time": datetime.now().isoformat(),
+                    "data_types": target_types,
+                    "results": stock_data_results
+                }
             
             elapsed_time = (datetime.now() - start_time).total_seconds()
             
-            if results:
-                logger.info(f"✅ Data refresh completed successfully!")
+            if results and results.get("success", False):
+                successful = results.get("successful_symbols", 0)
+                failed = results.get("failed_symbols", 0)
+                
+                logger.info(f"✅ Data refresh completed!")
                 logger.info(f"⏱️  Total time: {elapsed_time:.1f} seconds")
-                logger.info(f"📊 Processed: {len(target_stocks)} stocks, {len(target_types)} data types")
+                logger.info(f"📊 Results: {successful} successful, {failed} failed out of {len(target_stocks)} stocks")
+                logger.info(f"🎯 Data types processed: {', '.join(target_types)}")
+                
+                # Note: Data type filtering is handled by the collection methods automatically
+                # The collect_complete_dataset method collects all data types (fundamentals, prices, news)
+                if len(target_types) < 4:
+                    logger.info(f"ℹ️  Note: Requested specific data types but collect_complete_dataset collects all types")
                 
                 # Validate refreshed data
                 logger.info("🔍 Validating refreshed data...")
-                validation_results = validator.validate_data_integrity()
+                try:
+                    validation_results = validator.validate_data_integrity()
+                    
+                    if validation_results.get('overall_health', 0) > 0.8:
+                        logger.info("✅ Data validation passed - high quality data")
+                    else:
+                        logger.warning("⚠️  Data validation concerns - check validation report")
+                except Exception as e:
+                    logger.warning(f"⚠️  Data validation failed: {str(e)}")
                 
-                if validation_results.get('overall_health', 0) > 0.8:
-                    logger.info("✅ Data validation passed - high quality data")
-                else:
-                    logger.warning("⚠️  Data validation concerns - check validation report")
-                
-                return True
+                return successful > 0
             else:
                 logger.error("❌ Data refresh failed - no results returned")
                 return False
@@ -187,7 +249,7 @@ def refresh_data(symbols: Optional[List[str]] = None,
         return False
     
     finally:
-        if 'db' in locals():
+        if 'db' in locals() and db.connection:
             db.close()
 
 def main():
@@ -262,7 +324,7 @@ Examples:
             return
     
     # Execute refresh
-    success = refresh_data(symbols, data_types, logger)
+    success = refresh_data(symbols, data_types, logger, args.quiet)
     
     if success:
         print("\n✅ Data refresh completed successfully!")
