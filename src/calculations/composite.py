@@ -430,8 +430,9 @@ class CompositeCalculator:
                 sql = '''
                     INSERT OR REPLACE INTO calculated_metrics
                     (symbol, calculation_date, fundamental_score, quality_score, 
-                     growth_score, sentiment_score, composite_score, methodology_version)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                     growth_score, sentiment_score, composite_score, methodology_version,
+                     sector_percentile, market_percentile, outlier_category)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 '''
                 
                 cursor.execute(sql, (
@@ -442,7 +443,10 @@ class CompositeCalculator:
                     score_obj.growth_score,
                     score_obj.sentiment_score,
                     score_obj.composite_score,
-                    score_obj.methodology_version
+                    score_obj.methodology_version,
+                    score_obj.sector_percentile,
+                    score_obj.market_percentile,
+                    score_obj.outlier_category
                 ))
             
             db.connection.commit()
