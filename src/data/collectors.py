@@ -146,6 +146,7 @@ class YahooFinanceCollector:
                 
                 # Financial statement items
                 'total_revenue': info.get('totalRevenue'),
+                'net_income': info.get('netIncomeToCommon'),  # Added missing net income field
                 'total_cash': info.get('totalCash'),
                 'total_debt': info.get('totalDebt'),
                 'free_cash_flow': info.get('freeCashflow'),

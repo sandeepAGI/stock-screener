@@ -233,30 +233,48 @@ class FundamentalCalculator:
     
     def calculate_peg_ratio(self, fundamentals: Dict[str, Any], sector: Optional[str] = None) -> Tuple[Optional[float], float]:
         """
-        Calculate and score PEG ratio (P/E to Growth) with sector adjustments
+        Calculate and score PEG ratio (P/E to Growth) with fallback calculations
+        
+        Primary: Use provided peg_ratio
+        Fallback 1: forward_pe / revenue_growth (conservative proxy)
+        Fallback 2: pe_ratio / earnings_growth (when earnings_growth > 0)
         
         Returns:
             (peg_ratio, peg_score): Raw PEG ratio and normalized score (0-100)
         """
         try:
             peg_ratio = fundamentals.get('peg_ratio')
+            calculation_method = "direct"
             
-            if peg_ratio is None:
-                # Try to calculate from P/E and growth rate
-                pe_ratio = fundamentals.get('pe_ratio')
-                earnings_growth = fundamentals.get('earnings_growth')
+            if peg_ratio is None or peg_ratio <= 0:
+                # Fallback 1: Forward PE / Revenue Growth (PRIMARY FALLBACK)
+                forward_pe = fundamentals.get('forward_pe')
+                revenue_growth = fundamentals.get('revenue_growth')
                 
-                if pe_ratio and earnings_growth and earnings_growth > 0:
+                if forward_pe and revenue_growth and revenue_growth > 0:
                     # Convert growth rate to percentage if needed
-                    growth_rate_pct = earnings_growth * 100 if earnings_growth < 1 else earnings_growth
+                    growth_rate_pct = revenue_growth * 100 if revenue_growth < 1 else revenue_growth
                     if growth_rate_pct > 0:
-                        peg_ratio = pe_ratio / growth_rate_pct
-                        logger.info("Calculated PEG ratio from P/E and earnings growth")
-                    else:
-                        logger.warning("Invalid earnings growth rate for PEG calculation")
-                        return None, 0.0
-                else:
-                    logger.warning("Insufficient data for PEG ratio calculation")
+                        peg_ratio = forward_pe / growth_rate_pct
+                        calculation_method = "forward_pe_revenue_growth"
+                        logger.info(f"Calculated PEG ratio using forward PE / revenue growth fallback: {peg_ratio:.2f}")
+                
+                # Fallback 2: Trailing PE / Earnings Growth (SECONDARY FALLBACK)
+                if peg_ratio is None or peg_ratio <= 0:
+                    pe_ratio = fundamentals.get('pe_ratio')
+                    earnings_growth = fundamentals.get('earnings_growth')
+                    
+                    if pe_ratio and earnings_growth and earnings_growth > 0:
+                        # Convert growth rate to percentage if needed
+                        growth_rate_pct = earnings_growth * 100 if earnings_growth < 1 else earnings_growth
+                        if growth_rate_pct > 0:
+                            peg_ratio = pe_ratio / growth_rate_pct
+                            calculation_method = "pe_ratio_earnings_growth"
+                            logger.info(f"Calculated PEG ratio using PE / earnings growth fallback: {peg_ratio:.2f}")
+                
+                # If all fallbacks fail
+                if peg_ratio is None or peg_ratio <= 0:
+                    logger.warning("Insufficient data for PEG ratio calculation (all fallbacks failed)")
                     return None, 0.0
             
             if peg_ratio <= 0:

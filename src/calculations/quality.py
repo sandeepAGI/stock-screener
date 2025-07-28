@@ -210,34 +210,43 @@ class QualityCalculator:
     
     def calculate_roic(self, fundamentals: Dict[str, Any], sector: Optional[str] = None) -> Tuple[Optional[float], float]:
         """
-        Calculate and score Return on Invested Capital
+        Calculate and score Return on Invested Capital with ROA fallback
         
-        ROIC = Operating Income / Invested Capital
-        Where Invested Capital = Total Assets - Current Liabilities
+        Primary: ROIC = Net Income / (Total Assets - Total Debt)
+        Fallback: Use return_on_assets when ROIC calculation fails
         
         Returns:
             (roic, roic_score): Raw ROIC and normalized score (0-100)
         """
         try:
-            # ROIC not directly available, need to calculate
+            roic = None
+            calculation_method = "direct"
+            
+            # Try primary ROIC calculation
             net_income = fundamentals.get('net_income')
             total_assets = fundamentals.get('total_assets')
-            # Current liabilities not directly available, use total debt as approximation
             total_debt = fundamentals.get('total_debt')
             
-            if not all([net_income, total_assets]):
-                logger.warning("Insufficient data for ROIC calculation")
-                return None, 0.0
+            if net_income and total_assets:
+                # Approximate ROIC calculation
+                # ROIC ≈ Net Income / (Total Assets - Total Debt)
+                invested_capital = total_assets - (total_debt or 0)
+                
+                if invested_capital > 0:
+                    roic = net_income / invested_capital
+                    calculation_method = "calculated_roic"
             
-            # Approximate ROIC calculation
-            # ROIC ≈ Net Income / (Total Assets - Total Debt)
-            invested_capital = total_assets - (total_debt or 0)
-            
-            if invested_capital <= 0:
-                logger.warning("Invalid invested capital for ROIC calculation")
-                return None, 0.0
-            
-            roic = net_income / invested_capital
+            # Fallback: Use return_on_assets as ROIC proxy
+            if roic is None:
+                return_on_assets = fundamentals.get('return_on_assets')
+                
+                if return_on_assets and return_on_assets > 0:
+                    roic = return_on_assets
+                    calculation_method = "roa_fallback"
+                    logger.info(f"Using return on assets as ROIC fallback: {roic:.4f}")
+                else:
+                    logger.warning("Insufficient data for ROIC calculation (all methods failed)")
+                    return None, 0.0
             
             # Handle extreme negative ROIC
             if roic <= -0.3:  # ROIC < -30% indicates severe capital destruction
@@ -340,17 +349,29 @@ class QualityCalculator:
     
     def calculate_current_ratio(self, fundamentals: Dict[str, Any], sector: Optional[str] = None) -> Tuple[Optional[float], float]:
         """
-        Calculate and score Current Ratio
+        Calculate and score Current Ratio with fallback to Quick Ratio
+        
+        Primary: Use provided current_ratio
+        Fallback: Use quick_ratio (more conservative liquidity measure)
         
         Returns:
             (current_ratio, current_score): Raw current ratio and normalized score (0-100)
         """
         try:
             current_ratio = fundamentals.get('current_ratio')
+            calculation_method = "direct"
             
             if current_ratio is None:
-                logger.warning("Current ratio not available in fundamental data")
-                return None, 0.0
+                # Fallback: Use quick ratio (more conservative)
+                quick_ratio = fundamentals.get('quick_ratio')
+                
+                if quick_ratio and quick_ratio > 0:
+                    current_ratio = quick_ratio
+                    calculation_method = "quick_ratio_fallback"
+                    logger.info(f"Using quick ratio as current ratio fallback: {current_ratio:.2f}")
+                else:
+                    logger.warning("Current ratio and quick ratio both unavailable")
+                    return None, 0.0
             
             # Score current ratio (higher is generally better, but too high may indicate inefficiency)
             thresholds = self.scoring_thresholds['current_ratio']

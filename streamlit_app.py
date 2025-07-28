@@ -161,188 +161,476 @@ def render_methodology_overview():
         st.markdown('<div class="methodology-badge">💭 Sentiment (15%)</div>', unsafe_allow_html=True)
         st.caption("News, Social Media Analysis")
 
-def create_sample_data():
-    """Create sample data for demonstration"""
-    sample_stocks = [
-        {
-            'symbol': 'AAPL',
-            'company': 'Apple Inc.',
-            'sector': 'Technology',
-            'fundamental_score': 72.5,
-            'quality_score': 85.2,
-            'growth_score': 68.1,
-            'sentiment_score': 75.3,
-            'composite_score': 75.3,
-            'fundamental_data_quality': 0.95,
-            'quality_data_quality': 0.90,
-            'growth_data_quality': 0.85,
-            'sentiment_data_quality': 0.70,
-            'overall_data_quality': 0.85,
-            'market_percentile': 78.5,
-            'outlier_category': 'fairly_valued'
-        },
-        {
-            'symbol': 'MSFT',
-            'company': 'Microsoft Corporation',
-            'sector': 'Technology',
-            'fundamental_score': 68.9,
-            'quality_score': 88.7,
-            'growth_score': 71.4,
-            'sentiment_score': 72.8,
-            'composite_score': 75.5,
-            'fundamental_data_quality': 0.92,
-            'quality_data_quality': 0.95,
-            'growth_data_quality': 0.88,
-            'sentiment_data_quality': 0.75,
-            'overall_data_quality': 0.88,
-            'market_percentile': 79.2,
-            'outlier_category': 'fairly_valued'
-        },
-        {
-            'symbol': 'GOOGL',
-            'company': 'Alphabet Inc.',
-            'sector': 'Communication Services',
-            'fundamental_score': 78.3,
-            'quality_score': 82.1,
-            'growth_score': 74.6,
-            'sentiment_score': 68.9,
-            'composite_score': 76.0,
-            'fundamental_data_quality': 0.90,
-            'quality_data_quality': 0.85,
-            'growth_data_quality': 0.90,
-            'sentiment_data_quality': 0.65,
-            'overall_data_quality': 0.83,
-            'market_percentile': 80.1,
-            'outlier_category': 'fairly_valued'
-        },
-        {
-            'symbol': 'TSLA',
-            'company': 'Tesla Inc.',
-            'sector': 'Consumer Discretionary',
-            'fundamental_score': 45.2,
-            'quality_score': 62.8,
-            'growth_score': 89.3,
-            'sentiment_score': 82.1,
-            'composite_score': 69.9,
-            'fundamental_data_quality': 0.85,
-            'quality_data_quality': 0.80,
-            'growth_data_quality': 0.90,
-            'sentiment_data_quality': 0.85,
-            'overall_data_quality': 0.85,
-            'market_percentile': 65.4,
-            'outlier_category': 'fairly_valued'
-        },
-        {
-            'symbol': 'JNJ',
-            'company': 'Johnson & Johnson',
-            'sector': 'Healthcare',
-            'fundamental_score': 82.1,
-            'quality_score': 91.5,
-            'growth_score': 52.3,
-            'sentiment_score': 65.7,
-            'composite_score': 72.9,
-            'fundamental_data_quality': 0.95,
-            'quality_data_quality': 0.98,
-            'growth_data_quality': 0.85,
-            'sentiment_data_quality': 0.60,
-            'overall_data_quality': 0.85,
-            'market_percentile': 71.3,
-            'outlier_category': 'fairly_valued'
-        }
-    ]
+def get_stocks_needing_calculation(db: DatabaseManager) -> Tuple[List[str], List[str]]:
+    """
+    Determine which stocks need calculation vs which have current calculations
     
-    return pd.DataFrame(sample_stocks)
+    Args:
+        db: Database manager instance
+        
+    Returns:
+        Tuple of (stocks_needing_calculation, stocks_with_current_calculations)
+    """
+    cursor = db.connection.cursor()
+    
+    # Get all stocks
+    all_stocks = db.get_all_stocks()
+    
+    stocks_needing_calc = []
+    stocks_with_current_calc = []
+    
+    for symbol in all_stocks:
+        # Get latest calculation timestamp
+        cursor.execute('''
+            SELECT created_at FROM calculated_metrics 
+            WHERE symbol = ? 
+            ORDER BY created_at DESC LIMIT 1
+        ''', (symbol,))
+        calc_result = cursor.fetchone()
+        
+        if not calc_result:
+            # No calculation exists
+            stocks_needing_calc.append(symbol)
+            continue
+            
+        calc_timestamp = calc_result[0]
+        if isinstance(calc_timestamp, str):
+            calc_timestamp = datetime.fromisoformat(calc_timestamp.replace('T', ' '))
+        
+        # Get latest data timestamps for each data type
+        needs_recalc = False
+        for table_name in ['fundamental_data', 'price_data', 'news_articles']:
+            cursor.execute(f'''
+                SELECT MAX(created_at) FROM {table_name} 
+                WHERE symbol = ?
+            ''', (symbol,))
+            data_result = cursor.fetchone()
+            
+            if data_result and data_result[0]:
+                data_timestamp = data_result[0]
+                if isinstance(data_timestamp, str):
+                    # Handle both formats: "2025-07-27T15:07:33.248492" and "2025-07-27 19:07:33"
+                    if 'T' in data_timestamp:
+                        data_timestamp = datetime.fromisoformat(data_timestamp)
+                    else:
+                        data_timestamp = datetime.strptime(data_timestamp, '%Y-%m-%d %H:%M:%S')
+                
+                # If any data is newer than calculation, need to recalculate
+                if data_timestamp > calc_timestamp:
+                    needs_recalc = True
+                    break
+        
+        if needs_recalc:
+            stocks_needing_calc.append(symbol)
+        else:
+            stocks_with_current_calc.append(symbol)
+    
+    cursor.close()
+    return stocks_needing_calc, stocks_with_current_calc
+
+def load_existing_calculations(db: DatabaseManager, symbols: List[str]) -> Dict[str, Dict]:
+    """
+    Load existing calculations from database
+    
+    Args:
+        db: Database manager instance
+        symbols: List of symbols to load
+        
+    Returns:
+        Dictionary mapping symbol to calculation data
+    """
+    if not symbols:
+        return {}
+    
+    cursor = db.connection.cursor()
+    placeholders = ','.join(['?' for _ in symbols])
+    
+    cursor.execute(f'''
+        SELECT cm.symbol, cm.fundamental_score, cm.quality_score, cm.growth_score, 
+               cm.sentiment_score, cm.composite_score, cm.sector_percentile,
+               cm.calculation_date, s.company_name, s.sector
+        FROM calculated_metrics cm
+        JOIN stocks s ON cm.symbol = s.symbol
+        WHERE cm.symbol IN ({placeholders})
+        AND cm.created_at = (
+            SELECT MAX(created_at) FROM calculated_metrics cm2 
+            WHERE cm2.symbol = cm.symbol
+        )
+    ''', symbols)
+    
+    results = {}
+    for row in cursor.fetchall():
+        symbol = row[0]
+        results[symbol] = {
+            'symbol': symbol,
+            'company': row[8] or f"{symbol} Inc.",
+            'sector': row[9] or 'Unknown',
+            'fundamental_score': float(row[1]) if row[1] else 0.0,
+            'quality_score': float(row[2]) if row[2] else 0.0,
+            'growth_score': float(row[3]) if row[3] else 0.0,
+            'sentiment_score': float(row[4]) if row[4] else 0.0,
+            'composite_score': float(row[5]) if row[5] else 0.0,
+            'market_percentile': float(row[6]) if row[6] else 0.0,
+            'fundamental_data_quality': 1.0,  # Will be calculated properly later
+            'quality_data_quality': 1.0,
+            'growth_data_quality': 1.0,
+            'sentiment_data_quality': 1.0,
+            'overall_data_quality': 1.0,
+            'outlier_category': 'fairly_valued'  # Will be determined by percentile
+        }
+    
+    cursor.close()
+    return results
+
+@st.cache_data(ttl=300)
+def get_real_stock_data() -> pd.DataFrame:
+    """
+    Get real stock data - use existing calculations when current, calculate when needed
+    
+    Returns:
+        DataFrame with real calculated scores and data quality
+    """
+    try:
+        # Initialize database and calculators
+        db = initialize_database()
+        if not db:
+            st.error("❌ Database connection failed")
+            return pd.DataFrame()
+        
+        # Determine which stocks need calculation
+        stocks_needing_calc, stocks_with_current_calc = get_stocks_needing_calculation(db)
+        
+        total_stocks = len(stocks_needing_calc) + len(stocks_with_current_calc)
+        
+        # Show status
+        if stocks_needing_calc:
+            st.info(f"📊 Found {len(stocks_with_current_calc)} stocks with current calculations, {len(stocks_needing_calc)} need updates")
+        else:
+            st.success(f"✅ All {len(stocks_with_current_calc)} stocks have current calculations")
+        
+        # Load existing calculations
+        existing_data = load_existing_calculations(db, stocks_with_current_calc)
+        
+        # Calculate new data if needed
+        new_data = {}
+        if stocks_needing_calc:
+            with st.spinner(f"Calculating scores for {len(stocks_needing_calc)} stocks..."):
+                calculators = initialize_calculators()
+                composite_calc = calculators['composite']
+                
+                # Calculate in batches to show progress
+                batch_size = 10
+                for i in range(0, len(stocks_needing_calc), batch_size):
+                    batch = stocks_needing_calc[i:i+batch_size]
+                    st.write(f"Processing batch {i//batch_size + 1}: {', '.join(batch)}")
+                    
+                    batch_scores = composite_calc.calculate_batch_composite(batch, db)
+                    
+                    for symbol, score_obj in batch_scores.items():
+                        stock_info = db.get_stock_info(symbol)
+                        company_name = stock_info.get('company_name', f"{symbol} Inc.") if stock_info else f"{symbol} Inc."
+                        
+                        new_data[symbol] = {
+                            'symbol': symbol,
+                            'company': company_name,
+                            'sector': score_obj.sector or 'Unknown',
+                            'fundamental_score': score_obj.fundamental_score,
+                            'quality_score': score_obj.quality_score,
+                            'growth_score': score_obj.growth_score,
+                            'sentiment_score': score_obj.sentiment_score,
+                            'composite_score': score_obj.composite_score,
+                            'fundamental_data_quality': score_obj.fundamental_data_quality,
+                            'quality_data_quality': score_obj.quality_data_quality,
+                            'growth_data_quality': score_obj.growth_data_quality,
+                            'sentiment_data_quality': score_obj.sentiment_data_quality,
+                            'overall_data_quality': score_obj.overall_data_quality,
+                            'market_percentile': score_obj.market_percentile or 0.0,
+                            'outlier_category': score_obj.outlier_category or 'unknown'
+                        }
+                
+                # Save new calculations to database
+                if new_data:
+                    # Convert to CompositeScore objects for saving
+                    composite_scores = {}
+                    for symbol, data in new_data.items():
+                        from src.calculations.composite import CompositeScore
+                        from datetime import date
+                        composite_scores[symbol] = CompositeScore(
+                            symbol=symbol,
+                            calculation_date=date.today(),
+                            fundamental_score=data['fundamental_score'],
+                            quality_score=data['quality_score'],
+                            growth_score=data['growth_score'],
+                            sentiment_score=data['sentiment_score'],
+                            composite_score=data['composite_score'],
+                            fundamental_data_quality=data['fundamental_data_quality'],
+                            quality_data_quality=data['quality_data_quality'],
+                            growth_data_quality=data['growth_data_quality'],
+                            sentiment_data_quality=data['sentiment_data_quality'],
+                            overall_data_quality=data['overall_data_quality'],
+                            sector=data['sector'],
+                            methodology_version='v1.0',
+                            data_sources_count=4,
+                            market_percentile=data['market_percentile'],
+                            sector_percentile=None,
+                            outlier_category=data['outlier_category']
+                        )
+                    
+                    composite_calc.save_composite_scores(composite_scores, db)
+                    st.success(f"✅ Saved calculations for {len(new_data)} stocks")
+        
+        # Combine existing and new data
+        all_data = {**existing_data, **new_data}
+        
+        if not all_data:
+            st.warning("⚠️ No stock data available")
+            return pd.DataFrame()
+        
+        # Convert to DataFrame
+        stock_data = list(all_data.values())
+        df = pd.DataFrame(stock_data)
+        
+        # Calculate percentiles across all stocks if we have new data
+        if new_data and len(df) > 1:
+            df['market_percentile'] = df['composite_score'].rank(pct=True) * 100
+            
+            # Update outlier categories based on percentiles
+            def categorize_outlier(percentile):
+                if percentile <= 20:
+                    return 'strong_undervalued'
+                elif percentile <= 35:
+                    return 'undervalued'
+                elif percentile <= 65:
+                    return 'fairly_valued'
+                elif percentile <= 80:
+                    return 'overvalued'
+                else:
+                    return 'strong_overvalued'
+            
+            df['outlier_category'] = df['market_percentile'].apply(categorize_outlier)
+        
+        st.success(f"📊 Loaded data for {len(df)} stocks ({len(existing_data)} from cache, {len(new_data)} calculated)")
+        return df
+        
+    except Exception as e:
+        st.error(f"❌ Error loading stock data: {str(e)}")
+        logger.error(f"Error in get_real_stock_data: {str(e)}")
+        return pd.DataFrame()
 
 def render_stock_screener():
-    """Render the main stock screener interface"""
-    st.header("🔍 Stock Screener")
+    """Render analytics-focused stock screener with outlier identification"""
+    st.header("🔍 Stock Analysis & Outlier Detection")
     
-    # Get sample data
-    df = create_sample_data()
+    # Get real data
+    df = get_real_stock_data()
+    
+    if df.empty:
+        st.warning("No stock data available. Please check data management section.")
+        return
     
     # Sidebar filters
-    st.sidebar.header("📋 Screening Filters")
+    st.sidebar.header("📋 Analysis Filters")
+    min_data_quality = st.sidebar.slider("Minimum Data Quality", 0.0, 1.0, 0.7, step=0.05,
+                                        help="Filter stocks with quality below threshold")
+    selected_sector = st.sidebar.selectbox("Sector Focus", ['All Sectors'] + sorted(df['sector'].unique().tolist()))
     
-    # Sector filter
-    sectors = ['All'] + sorted(df['sector'].unique().tolist())
-    selected_sector = st.sidebar.selectbox("Sector", sectors)
+    # Apply quality filter
+    quality_filtered_df = df[df['overall_data_quality'] >= min_data_quality].copy()
     
-    # Score filters
-    st.sidebar.subheader("Score Filters")
-    min_composite = st.sidebar.slider("Minimum Composite Score", 0, 100, 0)
-    min_data_quality = st.sidebar.slider("Minimum Data Quality", 0.0, 1.0, 0.0, step=0.1)
+    if selected_sector != 'All Sectors':
+        quality_filtered_df = quality_filtered_df[quality_filtered_df['sector'] == selected_sector]
     
-    # Outlier category filter
-    categories = ['All'] + sorted(df['outlier_category'].unique().tolist())
-    selected_category = st.sidebar.selectbox("Outlier Category", categories)
+    if quality_filtered_df.empty:
+        st.warning("No stocks meet the quality criteria. Try lowering the data quality threshold.")
+        return
     
-    # Apply filters
-    filtered_df = df.copy()
+    # Market Overview
+    st.subheader("📊 Market Overview")
+    col1, col2, col3, col4 = st.columns(4)
     
-    if selected_sector != 'All':
-        filtered_df = filtered_df[filtered_df['sector'] == selected_sector]
+    with col1:
+        total_analyzed = len(quality_filtered_df)
+        st.metric("Stocks Analyzed", total_analyzed)
     
-    if selected_category != 'All':
-        filtered_df = filtered_df[filtered_df['outlier_category'] == selected_category]
+    with col2:
+        avg_score = quality_filtered_df['composite_score'].mean()
+        st.metric("Average Composite Score", f"{avg_score:.1f}")
     
-    filtered_df = filtered_df[
-        (filtered_df['composite_score'] >= min_composite) &
-        (filtered_df['overall_data_quality'] >= min_data_quality)
-    ]
+    with col3:
+        avg_quality = quality_filtered_df['overall_data_quality'].mean()
+        st.metric("Average Data Quality", f"{avg_quality*100:.0f}%")
     
-    # Display results count
-    st.info(f"📊 Showing {len(filtered_df)} stocks (filtered from {len(df)} total)")
+    with col4:
+        score_std = quality_filtered_df['composite_score'].std()
+        st.metric("Score Volatility", f"{score_std:.1f}")
     
-    # Main results table
-    if len(filtered_df) > 0:
-        # Create display dataframe
-        display_df = filtered_df.copy()
+    # Outlier Analysis - The Main Focus
+    st.subheader("🎯 Investment Opportunities")
+    
+    # Create tabs for different analysis views
+    tab1, tab2, tab3 = st.tabs(["🔴 Undervalued Opportunities", "🔵 Overvalued Warnings", "📈 Distribution Analysis"])
+    
+    with tab1:
+        st.markdown("### Top Undervalued Stocks")
+        st.caption("Stocks with lowest composite scores - potential buying opportunities")
         
-        # Format scores for display
-        for col in ['fundamental_score', 'quality_score', 'growth_score', 'sentiment_score', 'composite_score']:
-            display_df[col] = display_df[col].apply(lambda x: f"{x:.1f}")
+        # Get undervalued stocks (bottom 20%)
+        undervalued = quality_filtered_df[quality_filtered_df['outlier_category'].isin(['strong_undervalued', 'undervalued'])]
         
-        # Format data quality columns
-        for col in ['fundamental_data_quality', 'quality_data_quality', 'growth_data_quality', 
-                   'sentiment_data_quality', 'overall_data_quality']:
-            display_df[col] = display_df[col].apply(lambda x: f"{x*100:.0f}%")
+        if len(undervalued) == 0:
+            # If no categorized undervalued, take bottom 10 by score
+            undervalued = quality_filtered_df.nsmallest(10, 'composite_score')
+            st.info("📊 Showing bottom 10 stocks by composite score (no strong undervalued detected)")
+        else:
+            undervalued = undervalued.nsmallest(10, 'composite_score')
         
-        display_df['market_percentile'] = display_df['market_percentile'].apply(lambda x: f"{x:.1f}%")
+        display_undervalued = undervalued[['symbol', 'company', 'sector', 'composite_score', 
+                                         'fundamental_score', 'quality_score', 'growth_score', 
+                                         'sentiment_score', 'overall_data_quality', 'market_percentile']].copy()
         
-        # Rename columns for display
-        display_columns = {
-            'symbol': 'Symbol',
-            'company': 'Company',
-            'sector': 'Sector',
-            'composite_score': 'Composite Score',
-            'fundamental_score': 'Fundamental',
-            'quality_score': 'Quality',
-            'growth_score': 'Growth',
-            'sentiment_score': 'Sentiment',
-            'overall_data_quality': 'Data Quality',
-            'market_percentile': 'Market Percentile',
-            'outlier_category': 'Category'
-        }
+        # Format for display
+        display_undervalued['composite_score'] = display_undervalued['composite_score'].apply(lambda x: f"{x:.1f}")
+        display_undervalued['overall_data_quality'] = display_undervalued['overall_data_quality'].apply(lambda x: f"{x*100:.0f}%")
+        display_undervalued['market_percentile'] = display_undervalued['market_percentile'].apply(lambda x: f"{x:.1f}%")
         
-        display_df = display_df.rename(columns=display_columns)
-        selected_cols = list(display_columns.values())
+        st.dataframe(display_undervalued, use_container_width=True, hide_index=True)
         
-        st.dataframe(
-            display_df[selected_cols],
-            use_container_width=True,
-            hide_index=True
-        )
+        # Quick analysis
+        if len(undervalued) > 0:
+            top_undervalued = undervalued.iloc[0]
+            st.success(f"💡 **Top Opportunity**: {top_undervalued['symbol']} ({top_undervalued['company']}) - Score: {top_undervalued['composite_score']:.1f}")
+    
+    with tab2:
+        st.markdown("### Top Overvalued Stocks")
+        st.caption("Stocks with highest composite scores - potential selling/avoiding opportunities")
         
-        # Add download button
-        csv = display_df[selected_cols].to_csv(index=False)
-        st.download_button(
-            label="📥 Download Results as CSV",
-            data=csv,
-            file_name=f"stock_screener_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-            mime="text/csv"
-        )
-    else:
-        st.warning("No stocks match the current filter criteria. Try adjusting the filters.")
+        # Get overvalued stocks (top 20%)
+        overvalued = quality_filtered_df[quality_filtered_df['outlier_category'].isin(['strong_overvalued', 'overvalued'])]
+        
+        if len(overvalued) == 0:
+            # If no categorized overvalued, take top 10 by score
+            overvalued = quality_filtered_df.nlargest(10, 'composite_score')
+            st.info("📊 Showing top 10 stocks by composite score (no strong overvalued detected)")
+        else:
+            overvalued = overvalued.nlargest(10, 'composite_score')
+        
+        display_overvalued = overvalued[['symbol', 'company', 'sector', 'composite_score', 
+                                       'fundamental_score', 'quality_score', 'growth_score', 
+                                       'sentiment_score', 'overall_data_quality', 'market_percentile']].copy()
+        
+        # Format for display  
+        display_overvalued['composite_score'] = display_overvalued['composite_score'].apply(lambda x: f"{x:.1f}")
+        display_overvalued['overall_data_quality'] = display_overvalued['overall_data_quality'].apply(lambda x: f"{x*100:.0f}%")
+        display_overvalued['market_percentile'] = display_overvalued['market_percentile'].apply(lambda x: f"{x:.1f}%")
+        
+        st.dataframe(display_overvalued, use_container_width=True, hide_index=True)
+        
+        # Quick analysis
+        if len(overvalued) > 0:
+            top_overvalued = overvalued.iloc[0]
+            st.warning(f"⚠️ **Highest Valuation**: {top_overvalued['symbol']} ({top_overvalued['company']}) - Score: {top_overvalued['composite_score']:.1f}")
+    
+    with tab3:
+        st.markdown("### Score Distribution Analysis")
+        st.caption("Full market distribution to identify outliers and patterns")
+        
+        # Distribution charts
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            # Composite score histogram
+            fig_hist = px.histogram(
+                quality_filtered_df, 
+                x='composite_score',
+                nbins=30,
+                title='Composite Score Distribution',
+                labels={'composite_score': 'Composite Score', 'count': 'Number of Stocks'}
+            )
+            fig_hist.add_vline(x=quality_filtered_df['composite_score'].mean(), 
+                             line_dash="dash", line_color="red", 
+                             annotation_text="Mean")
+            st.plotly_chart(fig_hist, use_container_width=True)
+        
+        with col2:
+            # Sector performance
+            sector_stats = quality_filtered_df.groupby('sector')['composite_score'].agg(['mean', 'count']).reset_index()
+            sector_stats = sector_stats[sector_stats['count'] >= 3]  # Only sectors with 3+ stocks
+            
+            fig_sector = px.bar(
+                sector_stats.sort_values('mean'),
+                x='mean',
+                y='sector',
+                orientation='h',
+                title='Average Score by Sector',
+                labels={'mean': 'Average Composite Score', 'sector': 'Sector'}
+            )
+            st.plotly_chart(fig_sector, use_container_width=True)
+        
+        # Outlier category breakdown
+        st.markdown("### Outlier Category Breakdown")
+        category_counts = quality_filtered_df['outlier_category'].value_counts()
+        
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            fig_categories = px.pie(
+                values=category_counts.values,
+                names=category_counts.index,
+                title='Distribution by Outlier Category'
+            )
+            st.plotly_chart(fig_categories, use_container_width=True)
+        
+        with col2:
+            st.markdown("**Category Summary:**")
+            for category, count in category_counts.items():
+                percentage = (count / len(quality_filtered_df)) * 100
+                emoji = {"strong_undervalued": "🟢", "undervalued": "🔵", "fairly_valued": "⚫", 
+                        "overvalued": "🟡", "strong_overvalued": "🔴"}.get(category, "❓")
+                st.write(f"{emoji} **{category.replace('_', ' ').title()}**: {count} stocks ({percentage:.1f}%)")
+    
+    # Advanced Filters Section
+    with st.expander("🔧 Advanced Analysis Tools"):
+        st.subheader("Custom Screening")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            score_range = st.slider("Composite Score Range", 
+                                  float(quality_filtered_df['composite_score'].min()), 
+                                  float(quality_filtered_df['composite_score'].max()),
+                                  (float(quality_filtered_df['composite_score'].min()), 
+                                   float(quality_filtered_df['composite_score'].max())))
+        
+        with col2:
+            selected_categories = st.multiselect("Outlier Categories", 
+                                               quality_filtered_df['outlier_category'].unique(),
+                                               default=quality_filtered_df['outlier_category'].unique())
+        
+        # Apply advanced filters
+        advanced_filtered = quality_filtered_df[
+            (quality_filtered_df['composite_score'] >= score_range[0]) &
+            (quality_filtered_df['composite_score'] <= score_range[1]) &
+            (quality_filtered_df['outlier_category'].isin(selected_categories))
+        ]
+        
+        if len(advanced_filtered) > 0:
+            st.write(f"📊 **{len(advanced_filtered)} stocks** match your criteria:")
+            
+            # Display filtered results
+            display_advanced = advanced_filtered[['symbol', 'company', 'sector', 'composite_score', 
+                                                'outlier_category', 'overall_data_quality']].copy()
+            display_advanced = display_advanced.sort_values('composite_score')
+            
+            st.dataframe(display_advanced, use_container_width=True, hide_index=True)
+            
+            # Download button for custom results
+            csv = display_advanced.to_csv(index=False)
+            st.download_button(
+                label="📥 Download Custom Results",
+                data=csv,
+                file_name=f"custom_stock_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                mime="text/csv"
+            )
+        else:
+            st.warning("No stocks match your advanced criteria.")
 
 def render_stock_analysis(symbol: str, df: pd.DataFrame):
     """Render detailed analysis for a specific stock"""
@@ -1482,8 +1770,8 @@ def main():
     
     st.markdown("---")
     
-    # Navigation - Updated with Data Management
-    tab1, tab2, tab3, tab4 = st.tabs(["🔍 Stock Screener", "📈 Stock Analysis", "🗄️ Data Management", "ℹ️ About"])
+    # Navigation - Analytics-focused
+    tab1, tab2, tab3, tab4 = st.tabs(["🎯 Outlier Analysis", "📈 Individual Stock", "🗄️ Data Management", "ℹ️ About"])
     
     with tab1:
         render_stock_screener()
@@ -1491,17 +1779,20 @@ def main():
     with tab2:
         st.header("📈 Individual Stock Analysis")
         
-        # Get sample data for stock selection
-        df = create_sample_data()
+        # Get real data for stock selection
+        df = get_real_stock_data()
         
-        selected_symbol = st.selectbox(
-            "Select a stock for detailed analysis:",
-            options=df['symbol'].tolist(),
-            format_func=lambda x: f"{x} - {df[df['symbol']==x]['company'].iloc[0]}"
-        )
-        
-        if selected_symbol:
-            render_stock_analysis(selected_symbol, df)
+        if df.empty:
+            st.warning("⚠️ No stock data available for individual analysis. Please check the Data Management tab to calculate stock scores first.")
+        else:
+            selected_symbol = st.selectbox(
+                "Select a stock for detailed analysis:",
+                options=df['symbol'].tolist(),
+                format_func=lambda x: f"{x} - {df[df['symbol']==x]['company'].iloc[0]}" if len(df[df['symbol']==x]) > 0 else x
+            )
+            
+            if selected_symbol:
+                render_stock_analysis(selected_symbol, df)
     
     with tab3:
         render_data_management()
