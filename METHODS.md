@@ -10,6 +10,11 @@ This document provides detailed documentation of the calculation methodologies, 
 - **Growth Analysis**: 20%
 - **Sentiment Analysis**: 15%
 
+**IMPORTANT: Score Interpretation**
+- **Higher Composite Scores (70-100)**: UNDERVALUED stocks with strong fundamentals, quality, growth, and sentiment - potential BUY candidates
+- **Lower Composite Scores (0-40)**: OVERVALUED stocks with poor metrics across components - potential SELL candidates  
+- **Medium Composite Scores (40-70)**: FAIRLY VALUED stocks with mixed characteristics - requires deeper analysis
+
 ---
 
 ## 1. Fundamental Valuation (40% Weight)
