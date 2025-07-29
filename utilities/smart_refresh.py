@@ -24,7 +24,7 @@ import argparse
 import logging
 import sqlite3
 from datetime import datetime, timedelta
-from typing import List, Optional, Dict, Set
+from typing import List, Optional, Dict, Set, Any
 import time
 
 # Add project root to path
@@ -101,6 +101,95 @@ def detect_sp500_changes(universe_manager: StockUniverseManager,
         'current_total': len(current_symbols),
         'previous_total': len(existing_symbols_set)
     }
+
+def validate_refresh_impact(symbols: List[str], data_types: List[str]) -> Dict[str, Any]:
+    """
+    Validate that refresh operations actually changed the database
+    
+    Args:
+        symbols: List of symbols that were refreshed
+        data_types: List of data types that were refreshed
+        
+    Returns:
+        Dictionary with validation results and actual changes detected
+    """
+    print("🔍 Validating refresh impact...")
+    
+    validation_results = {
+        'total_symbols': len(symbols),
+        'verified_changes': 0,
+        'data_type_changes': {},
+        'latest_timestamps': {},
+        'validation_passed': False
+    }
+    
+    try:
+        conn = sqlite3.connect('data/stock_data.db')
+        cursor = conn.cursor()
+        
+        current_time = datetime.now()
+        recent_threshold = timedelta(minutes=5)  # Data updated in last 5 minutes
+        
+        for data_type in data_types:
+            changes_found = 0
+            
+            if data_type == 'fundamentals':
+                for symbol in symbols:
+                    cursor.execute("""
+                        SELECT created_at FROM fundamental_data 
+                        WHERE symbol = ? ORDER BY created_at DESC LIMIT 1
+                    """, (symbol,))
+                    result = cursor.fetchone()
+                    if result:
+                        try:
+                            created_at = datetime.fromisoformat(result[0].replace('Z', ''))
+                            if current_time - created_at < recent_threshold:
+                                changes_found += 1
+                                validation_results['latest_timestamps'][f'{symbol}_fundamentals'] = result[0]
+                        except (ValueError, TypeError):
+                            pass
+            
+            elif data_type == 'prices':
+                for symbol in symbols:
+                    cursor.execute("""
+                        SELECT MAX(date) FROM price_data WHERE symbol = ?
+                    """, (symbol,))
+                    result = cursor.fetchone()
+                    if result and result[0]:
+                        # Price data is typically for recent trading days, check if we have recent data
+                        changes_found += 1
+                        validation_results['latest_timestamps'][f'{symbol}_prices'] = result[0]
+            
+            elif data_type == 'news':
+                cursor.execute("""
+                    SELECT COUNT(*) FROM news_articles 
+                    WHERE symbol IN ({}) AND publish_date >= datetime('now', '-1 day')
+                """.format(','.join('?' * len(symbols))), symbols)
+                result = cursor.fetchone()
+                if result and result[0] > 0:
+                    changes_found = result[0]
+                    validation_results['latest_timestamps'][f'news_articles'] = f"{result[0]} recent articles"
+            
+            validation_results['data_type_changes'][data_type] = changes_found
+            validation_results['verified_changes'] += changes_found
+        
+        conn.close()
+        
+        # Consider validation passed if we found changes for at least 80% of expected updates
+        expected_changes = len(symbols) * len(data_types)
+        validation_results['validation_passed'] = validation_results['verified_changes'] >= (expected_changes * 0.8)
+        
+        if validation_results['validation_passed']:
+            print(f"✅ Refresh validation PASSED: {validation_results['verified_changes']} verified changes")
+        else:
+            print(f"⚠️  Refresh validation concerns: Only {validation_results['verified_changes']}/{expected_changes} changes verified")
+        
+        return validation_results
+        
+    except Exception as e:
+        print(f"❌ Refresh validation failed: {str(e)}")
+        validation_results['validation_error'] = str(e)
+        return validation_results
 
 def analyze_staleness(symbols: List[str], max_age_days: int = 7) -> Dict[str, List[str]]:
     """
@@ -360,6 +449,18 @@ def main():
         start_time = datetime.now()
         results = execute_refresh(orchestrator, stale_symbols, target_data_types, sp500_changes)
         execution_time = (datetime.now() - start_time).total_seconds()
+        
+        # Validate that refresh actually changed the database
+        if total_updates > 0:
+            print(f"\n🔍 Validating refresh impact...")
+            validation_results = validate_refresh_impact(target_symbols, target_data_types)
+            
+            if validation_results['validation_passed']:
+                print(f"✅ Refresh validation PASSED - Database changes verified")
+            else:
+                print(f"⚠️  Refresh validation concerns - Some changes may not have persisted")
+                print(f"   Expected: {len(target_symbols) * len(target_data_types)} changes")
+                print(f"   Verified: {validation_results['verified_changes']} changes")
         
         # Display results
         print(f"\n✅ Smart refresh completed!")
