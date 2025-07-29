@@ -80,5 +80,15 @@ test_*.py
 *.temp
 *.backup
 
+# Backup directories and files
+backups/
+*.db.gz
+*_metadata.json
+
+# Database backups and snapshots in data directory
+data/backups/
+*snapshot*.csv
+test_percentiles_results_*.csv
+
 # Chrome driver downloads (from webdriver-manager)
 ~/.wdm/
