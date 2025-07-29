@@ -13,6 +13,7 @@ Key Features:
 Usage:
     python utilities/smart_refresh.py                              # Smart refresh all stale data
     python utilities/smart_refresh.py --symbols AAPL,MSFT         # Refresh specific stocks  
+    python utilities/smart_refresh.py --data-types sentiment       # Refresh Reddit sentiment only
     python utilities/smart_refresh.py --data-types fundamentals    # Refresh specific data types
     python utilities/smart_refresh.py --check-sp500               # Check S&P 500 changes only
     python utilities/smart_refresh.py --max-age-days 7            # Custom staleness threshold
@@ -170,6 +171,16 @@ def validate_refresh_impact(symbols: List[str], data_types: List[str]) -> Dict[s
                     changes_found = result[0]
                     validation_results['latest_timestamps'][f'news_articles'] = f"{result[0]} recent articles"
             
+            elif data_type == 'sentiment':
+                cursor.execute("""
+                    SELECT COUNT(*) FROM reddit_posts 
+                    WHERE symbol IN ({}) AND created_utc >= datetime('now', '-1 day')
+                """.format(','.join('?' * len(symbols))), symbols)
+                result = cursor.fetchone()
+                if result and result[0] > 0:
+                    changes_found = result[0]
+                    validation_results['latest_timestamps'][f'reddit_posts'] = f"{result[0]} recent posts"
+            
             validation_results['data_type_changes'][data_type] = changes_found
             validation_results['verified_changes'] += changes_found
         
@@ -208,7 +219,8 @@ def analyze_staleness(symbols: List[str], max_age_days: int = 7) -> Dict[str, Li
     stale_symbols = {
         'fundamentals': [],
         'prices': [],
-        'news': []
+        'news': [],
+        'sentiment': []
     }
     
     try:
@@ -263,6 +275,22 @@ def analyze_staleness(symbols: List[str], max_age_days: int = 7) -> Dict[str, Li
                         stale_symbols['news'].append(symbol)
                 except (ValueError, TypeError):
                     stale_symbols['news'].append(symbol)
+            
+            # Check sentiment staleness (Reddit posts)
+            cursor.execute("""
+                SELECT MAX(created_utc) FROM reddit_posts WHERE symbol = ?
+            """, (symbol,))
+            latest_sentiment = cursor.fetchone()[0]
+            
+            if not latest_sentiment:
+                stale_symbols['sentiment'].append(symbol)
+            else:
+                try:
+                    latest_dt = datetime.fromisoformat(latest_sentiment.replace('Z', ''))
+                    if latest_dt < cutoff_date:
+                        stale_symbols['sentiment'].append(symbol)
+                except (ValueError, TypeError):
+                    stale_symbols['sentiment'].append(symbol)
         
         conn.close()
         
@@ -296,7 +324,7 @@ def execute_refresh(orchestrator: DataCollectionOrchestrator,
     """
     print("🚀 Starting smart refresh using proven collection methods...")
     
-    results = {'fundamentals': 0, 'prices': 0, 'news': 0, 'sp500_added': 0, 'sp500_removed': 0}
+    results = {'fundamentals': 0, 'prices': 0, 'news': 0, 'sentiment': 0, 'sp500_added': 0, 'sp500_removed': 0}
     
     try:
         # Handle S&P 500 additions first using existing bulk method
@@ -346,6 +374,18 @@ def execute_refresh(orchestrator: DataCollectionOrchestrator,
             except Exception as e:
                 print(f"   ❌ Error refreshing news: {str(e)}")
         
+        if 'sentiment' in target_data_types and stale_symbols['sentiment']:
+            symbols_to_update = stale_symbols['sentiment']
+            print(f"💬 Refreshing sentiment for {len(symbols_to_update)} stocks...")
+            
+            # Use existing refresh_sentiment_only method (now fixed!)
+            try:
+                sentiment_results = orchestrator.refresh_sentiment_only(symbols_to_update)
+                results['sentiment'] = sum(1 for success in sentiment_results.values() if success)
+                print(f"   💬 Sentiment: {results['sentiment']}/{len(symbols_to_update)} successful")
+            except Exception as e:
+                print(f"   ❌ Error refreshing sentiment: {str(e)}")
+        
         return results
         
     except Exception as e:
@@ -356,7 +396,7 @@ def main():
     """Main smart refresh process using proven baseline pattern"""
     parser = argparse.ArgumentParser(description='Smart data refresh for StockAnalyzer Pro')
     parser.add_argument('--symbols', help='Comma-separated list of symbols to refresh')
-    parser.add_argument('--data-types', help='Comma-separated list: fundamentals,prices,news')
+    parser.add_argument('--data-types', help='Comma-separated list: fundamentals,prices,news,sentiment')
     parser.add_argument('--max-age-days', type=int, default=7, help='Max age in days before refresh (default: 7)')
     parser.add_argument('--check-sp500', action='store_true', help='Only check S&P 500 changes')
     parser.add_argument('--force', action='store_true', help='Force refresh regardless of staleness')
@@ -412,7 +452,7 @@ def main():
         if args.data_types:
             target_data_types = [dt.strip() for dt in args.data_types.split(',')]
         else:
-            target_data_types = ['fundamentals', 'prices', 'news']
+            target_data_types = ['fundamentals', 'prices', 'news', 'sentiment']
         
         print(f"📊 Target data types: {', '.join(target_data_types)}")
         
@@ -422,7 +462,8 @@ def main():
             stale_symbols = {
                 'fundamentals': target_symbols.copy() if 'fundamentals' in target_data_types else [],
                 'prices': target_symbols.copy() if 'prices' in target_data_types else [],
-                'news': target_symbols.copy() if 'news' in target_data_types else []
+                'news': target_symbols.copy() if 'news' in target_data_types else [],
+                'sentiment': target_symbols.copy() if 'sentiment' in target_data_types else []
             }
         else:
             stale_symbols = analyze_staleness(target_symbols, args.max_age_days)
