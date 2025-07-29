@@ -259,8 +259,8 @@ def update_analytics(symbols: Optional[List[str]] = None,
         # Run quality analysis on updated data
         logger.info("🔍 Running data quality analysis...")
         try:
-            quality_report = quality_engine.generate_quality_report()
-            overall_quality = quality_report.get('overall_quality_score', 0)
+            quality_report = quality_engine.generate_comprehensive_quality_report()
+            overall_quality = quality_report.overall_quality_score
             logger.info(f"📊 Overall data quality: {overall_quality*100:.1f}%")
             
             if overall_quality > 0.8:

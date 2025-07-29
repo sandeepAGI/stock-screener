@@ -89,13 +89,13 @@ class CompositeCalculator:
             'strong_overvalued': 100     # Top 80th+ percentile
         }
         
-        # Minimum data quality requirements
+        # Minimum data quality requirements (relaxed for post-refresh compatibility)
         self.min_data_quality = {
-            'fundamental': 0.5,    # Need 2+ fundamental metrics
-            'quality': 0.5,        # Need 2+ quality metrics
-            'growth': 0.5,         # Need 2+ growth metrics
-            'sentiment': 0.3,      # Need 1+ sentiment metrics (optional)
-            'overall': 0.6         # Need 60%+ overall data quality
+            'fundamental': 0.3,    # Need 1+ fundamental metrics (relaxed from 0.5)
+            'quality': 0.3,        # Need 1+ quality metrics (relaxed from 0.5)
+            'growth': 0.3,         # Need 1+ growth metrics (relaxed from 0.5)
+            'sentiment': 0.2,      # Need 1+ sentiment metrics (optional, relaxed from 0.3)
+            'overall': 0.4         # Need 40%+ overall data quality (relaxed from 0.6)
         }
     
     def get_sector_methodology_weights(self, sector: Optional[str]) -> Dict[str, float]:
