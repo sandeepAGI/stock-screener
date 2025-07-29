@@ -48,12 +48,13 @@ Data Management Section (User Control)     Analysis Components (Data Consumers)
 ### **Current Implementation Status (Post-Testing & Consolidation)**
 
 #### ✅ **PRODUCTION READY UTILITIES**
-- **backup_database.py** - ✅ **WORKING** - Creates reliable backups with compression
-- **update_analytics.py** - ✅ **WORKING** - Recalculates metrics correctly  
-- **load_sp500_baseline.py** - ✅ **WORKING** - Primary data collection tool
+- **utilities/backup_database.py** - ✅ **WORKING** - Creates reliable backups with compression
+- **utilities/update_analytics.py** - ✅ **WORKING** - Recalculates metrics correctly  
+- **utilities/smart_refresh.py** - ✅ **NEW & WORKING** - Intelligent data refresh with S&P 500 change detection
+- **scripts/load_sp500_baseline.py** - ✅ **WORKING** - Initial baseline data collection for all stocks
 
-#### ⚠️ **UTILITIES NEEDING FIXES**
-- **refresh_data.py** - ❌ **DATABASE CONNECTION ISSUES** - Database cursor errors, needs rewrite using baseline pattern
+#### 🧹 **CLEANUP COMPLETED**
+- **Removed redundant scripts**: `refresh_data.py`, `refresh_data_v2.py`, `intelligent_refresh.py` - superseded by `smart_refresh.py`
 
 #### ✅ **COMPLETED - Core Data Management (100%)**
 - **DataSourceMonitor**: Real-time API status and rate limiting monitoring
@@ -297,13 +298,13 @@ python scripts/load_sp500_baseline.py
 # Update sentiment analysis for news articles
 python run_sentiment_analysis.py
 
-# Create database backup (NEW - TESTED & WORKING)
+# Create database backup (TESTED & WORKING)
 python utilities/backup_database.py [--name custom_name] [--list] [--restore latest]
 
-# Refresh data for existing stocks (NEW - FIXED & READY FOR TESTING)
-python utilities/refresh_data.py [--symbols AAPL,MSFT] [--data-types fundamentals,prices,news]
+# Smart data refresh with S&P 500 change detection (NEW - TESTED & WORKING)
+python utilities/smart_refresh.py [--symbols AAPL,MSFT] [--data-types fundamentals,prices,news] [--force] [--max-age-days 7]
 
-# Recalculate analytics after data updates (NEW - UNTESTED)  
+# Recalculate analytics after data updates (TESTED & WORKING)  
 python utilities/update_analytics.py [--symbols AAPL,MSFT] [--force-recalculate]
 ```
 
@@ -312,10 +313,10 @@ python utilities/update_analytics.py [--symbols AAPL,MSFT] [--force-recalculate]
 - **📊 Baseline Data Load**: Complete S&P 500 data collection ✅ **TESTED**
 - **💭 Sentiment Analysis**: Update news article sentiment scores ✅ **TESTED**
 - **💾 Database Backup**: Create, list, and restore timestamped backups ✅ **TESTED**
-- **🔄 Data Refresh**: Selective updates with auto-backup safety ✅ **ENHANCED & READY**
-- **📈 Analytics Update**: Recalculate composite scores after data changes ⚠️ **UNTESTED**
-- **🎯 Targeted Operations**: Update specific stocks or data types as needed ⚠️ **UNTESTED**
-- **⚡ Performance Optimized**: Batch processing with progress monitoring ⚠️ **UNTESTED**
+- **🧠 Smart Data Refresh**: Intelligent incremental updates with S&P 500 change detection ✅ **NEW & TESTED**
+- **📈 Analytics Update**: Recalculate composite scores after data changes ✅ **TESTED**
+- **🎯 Targeted Operations**: Update specific stocks or data types as needed ✅ **TESTED**
+- **⚡ Performance Optimized**: Uses proven orchestrator methods with automatic backups ✅ **TESTED**
 
 ## 🔧 Technology Stack
 
