@@ -105,6 +105,9 @@ def refresh_data(symbols: Optional[List[str]] = None,
             logger.error("❌ Failed to connect to database")
             return False
         
+        # Ensure database tables exist (critical for operations)
+        db.create_tables()
+        
         db_ops = DatabaseOperationsManager(db)
         monitor = DataSourceMonitor()
         validator = DataValidator()
@@ -180,32 +183,65 @@ def refresh_data(symbols: Optional[List[str]] = None,
         logger.info("🚀 Starting data collection...")
         start_time = datetime.now()
         
-        # Use orchestrator for efficient batch collection
+        # Use direct stock-by-stock collection like working scripts
         try:
-            if len(target_stocks) == len(db.get_all_stocks()) and len(target_types) == 4:
-                # Full refresh - use universe collection
-                logger.info("🌟 Performing full universe refresh...")
-                results = orchestrator.collect_universe_data('sp500', data_types=target_types)
-            else:
-                # Selective refresh - use existing complete dataset method
-                logger.info("🎯 Performing selective refresh...")
-                logger.info(f"   Collecting data for {len(target_stocks)} stocks: {', '.join(target_stocks[:5])}{'...' if len(target_stocks) > 5 else ''}")
-                logger.info(f"   Data types: {', '.join(target_types)}")
-                
-                # Use the existing collect_complete_dataset method which works with the baseline script
-                stock_data_results = orchestrator.collect_complete_dataset(target_stocks)
-                
-                # Format results to match expected structure
-                results = {
-                    "success": len(stock_data_results) > 0,
-                    "total_symbols": len(target_stocks),
-                    "successful_symbols": len(stock_data_results),
-                    "failed_symbols": len(target_stocks) - len(stock_data_results),
-                    "start_time": start_time.isoformat(),
-                    "end_time": datetime.now().isoformat(),
-                    "data_types": target_types,
-                    "results": stock_data_results
-                }
+            results = {
+                "success": True,
+                "total_symbols": len(target_stocks),
+                "successful_symbols": 0,
+                "failed_symbols": 0,
+                "start_time": start_time.isoformat(),
+                "data_types": target_types,
+                "results": {}
+            }
+            
+            logger.info("🎯 Processing stocks individually...")
+            logger.info(f"   Collecting data for {len(target_stocks)} stocks: {', '.join(target_stocks[:5])}{'...' if len(target_stocks) > 5 else ''}")
+            logger.info(f"   Data types: {', '.join(target_types)}")
+            
+            # Initialize collectors directly using the same pattern as working scripts
+            from src.data.collectors import YahooFinanceCollector
+            yahoo_collector = YahooFinanceCollector()
+            
+            for i, symbol in enumerate(target_stocks, 1):
+                try:
+                    logger.info(f"📊 Processing {symbol} ({i}/{len(target_stocks)})...")
+                    
+                    # Collect data for this stock using direct method
+                    stock_data = orchestrator.collect_stock_data(symbol)
+                    
+                    if stock_data:
+                        # Insert data into database using the same methods as baseline script
+                        try:
+                            if 'fundamentals' in target_types and stock_data.fundamentals:
+                                db.insert_fundamental_data(symbol, stock_data.fundamentals.__dict__)
+                            
+                            if 'prices' in target_types and stock_data.price_history:
+                                db.insert_price_data(symbol, stock_data.price_history)
+                            
+                            if 'news' in target_types and stock_data.news_articles:
+                                db.insert_news_articles(symbol, stock_data.news_articles)
+                            
+                            results["successful_symbols"] += 1
+                            results["results"][symbol] = "success"
+                            logger.info(f"✅ {symbol} completed successfully")
+                            
+                        except Exception as e:
+                            logger.error(f"❌ Database insert failed for {symbol}: {str(e)}")
+                            results["failed_symbols"] += 1
+                            results["results"][symbol] = f"database_error: {str(e)}"
+                    else:
+                        results["failed_symbols"] += 1
+                        results["results"][symbol] = "collection_failed"
+                        logger.error(f"❌ Data collection failed for {symbol}")
+                        
+                except Exception as e:
+                    results["failed_symbols"] += 1
+                    results["results"][symbol] = f"error: {str(e)}"
+                    logger.error(f"❌ Error processing {symbol}: {str(e)}")
+            
+            results["end_time"] = datetime.now().isoformat()
+            results["success"] = results["successful_symbols"] > 0
             
             elapsed_time = (datetime.now() - start_time).total_seconds()
             
