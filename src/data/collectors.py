@@ -389,8 +389,10 @@ class DataCollectionOrchestrator:
                     # Extract fundamental metrics
                     fundamentals = self.yahoo_collector._extract_fundamentals(ticker)
                     if fundamentals:
+                        # ✅ CRITICAL FIX: Actually store the data in database
+                        self.db_manager.insert_fundamental_data(symbol, fundamentals)
                         results[symbol] = True
-                        logger.info(f"Successfully refreshed fundamentals for {symbol}")
+                        logger.info(f"Successfully refreshed and stored fundamentals for {symbol}")
                     else:
                         results[symbol] = False
                         logger.warning(f"No fundamental data available for {symbol}")
