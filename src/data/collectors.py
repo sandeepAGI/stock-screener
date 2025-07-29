@@ -524,20 +524,44 @@ class DataCollectionOrchestrator:
         
         for symbol in symbols:
             try:
-                # Collect Reddit sentiment
-                reddit_sentiment = self.reddit_collector.collect_stock_mentions(symbol)
+                # Collect Reddit sentiment data
+                reddit_posts = self.reddit_collector.collect_stock_mentions(symbol, days_back=7, max_posts=50)
                 
-                # For demonstration, we'll consider it successful if we get any sentiment data
-                if reddit_sentiment is not None:
+                if reddit_posts and len(reddit_posts) > 0:
                     # ✅ CRITICAL FIX: Actually store the data in database
-                    # Note: Reddit sentiment data structure needs proper formatting for database insertion
-                    # This method may need additional work to properly store sentiment data
-                    # For now, we'll mark as successful if data is collected
-                    results[symbol] = True
-                    logger.info(f"Successfully refreshed sentiment for {symbol} (Note: Database insertion needs refinement)")
+                    # Convert raw Reddit data to RedditPost objects for database insertion
+                    from src.data.database import RedditPost
+                    reddit_post_objects = []
+                    
+                    for post in reddit_posts:
+                        reddit_post = RedditPost(
+                            symbol=symbol,
+                            post_id=post.get('id', ''),
+                            title=post.get('title', ''),
+                            content=post.get('text', ''),
+                            subreddit=post.get('subreddit', ''),
+                            author=post.get('author', 'unknown'),
+                            score=post.get('score', 0),
+                            upvote_ratio=post.get('upvote_ratio', 0.0),
+                            num_comments=post.get('num_comments', 0),
+                            created_utc=datetime.fromtimestamp(post.get('created_utc', 0)),
+                            url=post.get('url', ''),
+                            sentiment_score=0.0,  # Will be calculated later
+                            data_quality_score=0.7  # Default quality score for Reddit data
+                        )
+                        reddit_post_objects.append(reddit_post)
+                    
+                    # Insert Reddit posts in batch
+                    if reddit_post_objects:
+                        self.db_manager.insert_reddit_posts(reddit_post_objects)
+                        results[symbol] = True
+                        logger.info(f"Successfully refreshed and stored {len(reddit_post_objects)} Reddit posts for {symbol}")
+                    else:
+                        results[symbol] = False
+                        logger.warning(f"Could not convert Reddit data for storage: {symbol}")
                 else:
                     results[symbol] = False
-                    logger.warning(f"No sentiment data available for {symbol}")
+                    logger.warning(f"No Reddit sentiment data available for {symbol}")
                 
                 time.sleep(0.5)  # Longer delay for Reddit API
                 
