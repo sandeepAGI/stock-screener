@@ -111,6 +111,10 @@ def load_stock_data() -> pd.DataFrame:
         FROM calculated_metrics cm 
         JOIN stocks s ON cm.symbol = s.symbol
         WHERE cm.composite_score IS NOT NULL
+        AND cm.created_at = (
+            SELECT MAX(created_at) FROM calculated_metrics cm2 
+            WHERE cm2.symbol = cm.symbol
+        )
         ORDER BY cm.composite_score DESC
         """
         
@@ -133,12 +137,14 @@ def load_sentiment_data(symbol: str) -> pd.DataFrame:
     try:
         conn = sqlite3.connect('data/stock_data.db')
         
-        # Get recent news headlines
+        # Get recent news headlines (prefer articles with titles, deduplicated)
         news_query = """
-        SELECT title, publish_date, sentiment_score, url
+        SELECT DISTINCT title, publish_date, sentiment_score, url
         FROM news_articles 
         WHERE symbol = ? 
-        ORDER BY publish_date DESC 
+        ORDER BY 
+            CASE WHEN title IS NOT NULL AND LENGTH(title) > 0 THEN 0 ELSE 1 END,
+            publish_date DESC 
         LIMIT 5
         """
         
@@ -185,9 +191,11 @@ def get_database_stats() -> Dict:
             "SELECT COUNT(*) as count FROM stocks", conn
         ).iloc[0]['count']
         
-        # Count stocks with calculations
+        # Count stocks with calculations (latest only)
         stats['calculated_stocks'] = pd.read_sql_query(
-            "SELECT COUNT(*) as count FROM calculated_metrics WHERE composite_score IS NOT NULL", conn
+            """SELECT COUNT(DISTINCT symbol) as count 
+               FROM calculated_metrics 
+               WHERE composite_score IS NOT NULL""", conn
         ).iloc[0]['count']
         
         # Get last calculation date
@@ -442,7 +450,7 @@ def show_stock_details(df: pd.DataFrame, symbol: str) -> None:
         
         with col2:
             sector_pct = stock_data['sector_percentile']
-            if sector_pct is not None:
+            if sector_pct is not None and not pd.isna(sector_pct):
                 st.metric("Sector Percentile", f"{sector_pct:.1f}%")
             else:
                 st.metric("Sector Percentile", "N/A")
@@ -477,11 +485,18 @@ def show_stock_details(df: pd.DataFrame, symbol: str) -> None:
         # Sentiment details if available
         sentiment_data = load_sentiment_data(symbol)
         if not sentiment_data.empty:
-            st.subheader("Recent News Headlines")
-            for _, news in sentiment_data.iterrows():
-                sentiment_color = "🟢" if news['sentiment_score'] > 0.1 else "🔴" if news['sentiment_score'] < -0.1 else "⚪"
-                st.write(f"{sentiment_color} **{news['title']}** _(Score: {news['sentiment_score']:.2f})_")
+            # Filter for articles with actual titles
+            valid_news = sentiment_data[sentiment_data['title'].notna() & (sentiment_data['title'].str.len() > 0)]
+            if not valid_news.empty:
+                st.subheader("Recent News Headlines")
+                for _, news in valid_news.iterrows():
+                    sentiment_color = "🟢" if news['sentiment_score'] > 0.1 else "🔴" if news['sentiment_score'] < -0.1 else "⚪"
+                    st.write(f"{sentiment_color} **{news['title']}** _(Score: {news['sentiment_score']:.2f})_")
+            else:
+                st.subheader("Recent News Headlines")
+                st.info("No recent news headlines available (news data collection needs refresh).")
         else:
+            st.subheader("Recent News Headlines")
             st.info("No recent news headlines available for this stock.")
             
     except Exception as e:

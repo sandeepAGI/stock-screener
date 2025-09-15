@@ -437,3 +437,180 @@ While the selective refresh issues have been resolved, **a new critical issue ha
 - **Data Analysis & Dashboard**: 🚨 **BROKEN** (newly discovered)
 
 **Revised Verdict**: The data infrastructure works correctly, but the analytical/UI layer is completely broken, making the system unusable from an end-user perspective.
+
+---
+
+# CODEBASE CLEANUP & REORGANIZATION COMPLETED
+**Date:** September 14, 2025
+**Status:** ✅ **COMPLETED**
+
+## Directory Reorganization Summary
+
+### 📁 Files Successfully Moved
+
+**Test Files** (6 files moved from root to `tests/dev/`):
+- `simple_refresh_test.py` → `tests/dev/`
+- `test_expanded_coverage.py` → `tests/dev/`
+- `test_orchestrator_reliability.py` → `tests/dev/`
+- `test_percentile_calculations.py` → `tests/dev/`
+- `test_percentile_fix.py` → `tests/dev/`
+- `test_yahoo_fields.py` → `tests/dev/`
+
+**Development Scripts** (7 files moved from root to `scripts/dev/`):
+- `add_percentile_columns.py` → `scripts/dev/`
+- `analyze_missing_data.py` → `scripts/dev/`
+- `analyze_script_consistency.py` → `scripts/dev/`
+- `clean_and_fix_percentiles.py` → `scripts/dev/`
+- `explore_yahoo_fields.py` → `scripts/dev/`
+- `fill_missing_net_income.py` → `scripts/dev/`
+- `fix_percentiles.py` → `scripts/dev/`
+
+**Temporary Files Removed**:
+- `test_percentiles_results_20250728_123313.csv` (deleted)
+
+### ✅ Benefits Achieved
+- **Clean Root Directory**: Reduced clutter by removing 13 development/test files
+- **Proper Organization**: Clear separation between production and development code
+- **Improved Maintainability**: Easier navigation and understanding of project structure
+- **No Functional Impact**: All core functionality tested and verified working after cleanup
+
+### 🧪 Post-Cleanup Verification
+- Smart refresh utility confirmed operational
+- Core calculation pipeline unaffected
+- Essential production files remain in root:
+  - `analytics_dashboard.py`
+  - `streamlit_app.py`
+  - `create_csv_export.py`
+  - `launch_dashboard.py`
+  - `run_sentiment_analysis.py`
+
+---
+
+# STREAMLIT DASHBOARD ANALYSIS - Two Dashboard Investigation
+**Date:** September 15, 2025
+**Status:** ✅ **ANALYSIS COMPLETE**
+
+## Problem Discovery
+During investigation of systematic tuple unpacking errors in the Streamlit dashboard, discovered that **two separate dashboard implementations exist**:
+
+1. **`analytics_dashboard.py`** (1,063 lines) - Original implementation
+2. **`streamlit_app.py`** (1,885 lines) - Current implementation with advanced features
+
+## Comparative Analysis Results
+
+### analytics_dashboard.py (Original/Simple)
+**Strengths:**
+- ✅ **Superior User Experience**: Interactive weight customization sliders (40/25/20/15 adjustable)
+- ✅ **Fast Performance**: Direct database queries, minimal dependencies
+- ✅ **Professional Styling**: Custom CSS with Montserrat fonts and brand colors
+- ✅ **Educational Content**: Comprehensive methodology guide with detailed explanations
+- ✅ **Clean Interface**: Simple navigation, polished ranking displays
+- ✅ **Self-Contained**: Single file, easy to understand and maintain
+
+**Limitations:**
+- ❌ **No Real-Time Data Management**: Relies on pre-calculated database values
+- ❌ **No Quality Monitoring**: Basic data quality display only
+- ❌ **No API Integration**: No health monitoring or configuration management
+- ❌ **Limited Functionality**: Cannot trigger data refresh or handle stale data
+
+### streamlit_app.py (Current/Complex) 
+**Strengths:**
+- ✅ **Robust Architecture**: Full system integration with calculation pipeline
+- ✅ **Real-Time Capabilities**: Data freshness monitoring, staleness detection
+- ✅ **Advanced Features**: API health monitoring, configuration management, quality gates
+- ✅ **Production Ready**: Comprehensive error handling, data versioning
+- ✅ **Dynamic Calculations**: Can trigger calculations when data is stale
+- ✅ **Quality Control**: Data quality thresholds and approval workflows
+
+**Critical Issues:**
+- 🚨 **Tuple Unpacking Errors**: Systematic "not enough values to unpack (expected 2, got 1)" crashes
+- ❌ **Missing UX Features**: No weight customization, less polished interface
+- ❌ **Complex Dependencies**: Requires entire project structure (15+ modules)
+- ❌ **Performance Issues**: Slower startup, higher memory usage
+
+## Branch History Analysis
+- **Fork Point**: July 27, 2025 (commit 8fe279b) when fallback systems were implemented
+- **Main Branch**: Contains `analytics_dashboard.py` (stopped updating after fork)
+- **Demo Branch**: Contains `streamlit_app.py` (active development since fork)
+
+## Recommended Merge Strategy
+
+### **Primary Recommendation: Hybrid Enhancement Approach**
+
+**Use `streamlit_app.py` as foundation** (robust architecture needed for production)
+**Extract best features from `analytics_dashboard.py`** (superior user experience)
+
+### Implementation Plan
+
+#### **Phase 1: Fix Critical Issues (Priority: HIGH)**
+1. **Fix tuple unpacking errors** in `streamlit_app.py`
+2. **Restore basic functionality** for end-users
+3. **Test data pipeline integration**
+
+#### **Phase 2: UX Feature Integration (Priority: HIGH)**
+Extract from `analytics_dashboard.py`:
+- **Weight customization sliders** (lines 799-853)
+- **Methodology guide content** (lines 490-761)
+- **Professional CSS styling** (lines 27-88)
+- **Clean ranking display functions** (lines 267-287)
+- **Sector analysis features** (lines 1039-1051)
+
+#### **Phase 3: Hybrid Interface Design (Priority: MEDIUM)**
+```python
+# Add demo mode toggle in streamlit_app.py
+demo_mode = st.sidebar.checkbox("Demo Mode", help="Simplified interface for presentations")
+if demo_mode:
+    render_analytics_dashboard_style()  # Simple, fast interface
+else:
+    render_full_management_interface()  # Advanced data management
+```
+
+#### **Phase 4: Branch Consolidation (Priority: MEDIUM)**
+```bash
+# Merge strategy: demo → main
+git checkout main
+git merge demo  # Brings in robust architecture
+# Keep streamlit_app.py as primary dashboard
+# Preserve analytics_dashboard.py as reference/fallback
+```
+
+### Expected Outcomes
+
+**Combined Dashboard Benefits:**
+- ✅ **Production robustness** from `streamlit_app.py`
+- ✅ **Superior user experience** from `analytics_dashboard.py`
+- ✅ **Flexibility** to use demo mode (simple) or full mode (advanced)
+- ✅ **Single source of truth** (no duplicate maintenance)
+
+**Risk Mitigation:**
+- **Backup current state** before merge operations
+- **Feature flags** to toggle between old/new functionality
+- **Clear rollback procedure** documented
+- **Preserve both files** until merge is fully tested
+
+## Updated System Status
+
+### ✅ Recently Fixed (Verified Working)
+- **Selective refresh methods**: All 4 methods now persist data correctly
+- **Quality thresholds**: Restored to proper analytical standards (50%+ requirements)
+- **Smart refresh utility**: End-to-end functionality confirmed
+- **Database operations**: Data collection and persistence working correctly
+
+### 🚨 Current Critical Issues
+- **Primary Dashboard (`streamlit_app.py`)**: Systematic tuple unpacking errors make it unusable
+- **Dashboard Divergence**: Two separate implementations causing maintenance overhead
+- **User Experience Gap**: Current dashboard lacks weight customization and polish
+
+### 📋 Immediate Action Items
+1. **Fix `streamlit_app.py` tuple unpacking errors** to restore basic functionality
+2. **Extract UX features from `analytics_dashboard.py`** for integration
+3. **Implement hybrid interface** with demo/full mode toggle
+4. **Plan branch merge strategy** to consolidate implementations
+
+## Final Assessment
+
+**Data Infrastructure**: ✅ **EXCELLENT** (all collection, persistence, and refresh operations working)
+**Dashboard Layer**: 🚨 **CRITICAL ISSUES** (primary interface broken, split implementation)
+**Merge Opportunity**: 🎯 **HIGH VALUE** (combining best of both approaches will yield superior product)
+
+**Recommendation**: Prioritize dashboard fixes and merge to provide users with both the robustness of the current system and the superior experience of the original design.
