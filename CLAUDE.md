@@ -188,6 +188,49 @@ stock-outlier/
 - **Historical Context:** Archived documentation in docs/archive/
 - **API Configuration:** Check .env.example for required keys
 
+## 🧠 DEVELOPMENT GUIDELINES & BEST PRACTICES
+
+### Core Development Principles
+
+1. **User Confirmation First**
+   - When in doubt, ask user before proceeding
+   - Never deviate from agreed upon plan without confirming with user
+   - Do not make any new assumptions without explicit approval
+
+2. **Rigorous Testing Requirements**
+   - Test, test, test - verify functionality at every step
+   - Always verify that a todo is complete before marking it as complete
+   - Run functional tests before considering any feature "done"
+   - Test both success and failure scenarios
+
+3. **Clean Development Practices**
+   - Remove any redundant or temporary files you create
+   - Keep the codebase clean and maintainable
+   - No debugging files or temporary scripts left behind
+
+4. **Documentation & Version Control**
+   - Always update README and CLAUDE.md upon completion of a phase
+   - Document significant changes and new features
+   - Create comprehensive commit messages
+   - Commit and push after each completed phase
+
+5. **Systematic Approach**
+   - Use TodoWrite tool to track all tasks and progress
+   - Mark todos as completed only after thorough verification
+   - Follow agreed upon implementation plans step by step
+   - Maintain clear communication about status and blockers
+
+### Quality Assurance Checklist
+
+Before marking any major feature as complete:
+- [ ] All functionality tested and working
+- [ ] Error handling and edge cases covered
+- [ ] Documentation updated (README.md, CLAUDE.md)
+- [ ] No temporary files left in repository
+- [ ] Git commit created with descriptive message
+- [ ] Changes pushed to remote repository
+- [ ] User confirmation received for any plan deviations
+
 ## ⚠️ IMPORTANT NOTES
 
 1. **Database Backups:** Always backup before major changes
@@ -204,12 +247,17 @@ stock-outlier/
    - REDDIT_CLIENT_SECRET
    - REDDIT_USER_AGENT
 
+4. **Claude API:** For enhanced LLM sentiment analysis
+   - ANTHROPIC_API_KEY (or NEWS_API_KEY)
+   - Automatic fallback to traditional analysis if unavailable
+
 ## 🚀 NEXT STEPS
 
-1. **Implement Reddit sentiment calculation** using existing SentimentAnalyzer
+1. ~~**Implement Reddit sentiment calculation**~~ ✅ **COMPLETED** with Claude LLM integration
 2. **Test both dashboards** to identify specific error conditions
 3. **Create migration plan** to consolidate dashboard implementations
-4. **Update this documentation** as fixes are completed
+4. **Complete data refresh testing** to ensure database update functionality
+5. **Update this documentation** as fixes are completed
 
 ---
 *This documentation represents the actual current state as of September 28, 2025, verified through comprehensive testing.*
