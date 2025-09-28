@@ -15,6 +15,7 @@ import praw
 from src.utils.helpers import load_config, get_reddit_credentials, safe_divide
 from src.data.stock_universe import StockUniverseManager, UniverseType
 from src.data.database import DatabaseManager
+from src.data.sentiment_analyzer import SentimentAnalyzer
 
 logger = logging.getLogger(__name__)
 
@@ -320,6 +321,7 @@ class DataCollectionOrchestrator:
         self.db_manager = DatabaseManager()
         self.db_manager.connect()
         self.db_manager.create_tables()
+        self.sentiment_analyzer = SentimentAnalyzer()
         
     def collect_complete_dataset(self, symbols: List[str]) -> Dict[str, StockData]:
         """
@@ -534,6 +536,16 @@ class DataCollectionOrchestrator:
                     reddit_post_objects = []
                     
                     for post in reddit_posts:
+                        # Calculate sentiment score using SentimentAnalyzer
+                        post_text = f"{post.get('title', '')} {post.get('text', '')}"
+                        sentiment_result = self.sentiment_analyzer.analyze_text(post_text)
+
+                        # Calculate data quality based on engagement and sentiment reliability
+                        base_quality = 0.7  # Base quality for Reddit data
+                        engagement_score = max(1, post.get('score', 0) + post.get('num_comments', 0))
+                        engagement_quality = min(1.0, engagement_score / 50)  # Scale engagement to 0-1
+                        final_quality = base_quality * 0.7 + engagement_quality * 0.3
+
                         reddit_post = RedditPost(
                             symbol=symbol,
                             post_id=post.get('id', ''),
@@ -546,8 +558,8 @@ class DataCollectionOrchestrator:
                             num_comments=post.get('num_comments', 0),
                             created_utc=datetime.fromtimestamp(post.get('created_utc', 0)),
                             url=post.get('url', ''),
-                            sentiment_score=0.0,  # Will be calculated later
-                            data_quality_score=0.7  # Default quality score for Reddit data
+                            sentiment_score=sentiment_result.sentiment_score,
+                            data_quality_score=final_quality
                         )
                         reddit_post_objects.append(reddit_post)
                     

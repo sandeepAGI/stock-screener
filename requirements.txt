@@ -10,6 +10,7 @@ python-dotenv>=1.0.0       # Environment variables
 # Sentiment Analysis
 textblob>=0.17.1           # Basic sentiment analysis
 vaderSentiment>=3.3.2      # Finance-tuned sentiment
+anthropic>=0.7.0           # Claude LLM for advanced sentiment analysis
 
 # Testing
 pytest>=7.4.0              # Testing framework

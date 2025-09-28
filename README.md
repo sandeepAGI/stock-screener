@@ -13,7 +13,7 @@ StockAnalyzer Pro uses a weighted 4-component approach:
 | **🏢 Fundamental** | 40% | P/E, EV/EBITDA, PEG, FCF Yield | ✅ Working |
 | **💎 Quality** | 25% | ROE, ROIC, Debt Ratios, Current Ratio | ✅ Working |
 | **📈 Growth** | 20% | Revenue Growth, EPS Growth, Stability | ✅ Working |
-| **💭 Sentiment** | 15% | News Sentiment + Reddit Collection | ⚠️ Partial |
+| **💭 Sentiment** | 15% | News Sentiment + Reddit Analysis (Claude LLM) | ✅ Working |
 
 **Key Features:**
 - Sector-aware scoring with 11 industry profiles
@@ -50,10 +50,10 @@ StockAnalyzer Pro uses a weighted 4-component approach:
 
 ### 🚧 In Progress / Needs Fixes
 
-**Reddit Sentiment Calculation:**
-- Reddit posts collected but sentiment scores not calculated
-- All 1,464 posts currently have sentiment_score = 0.0
-- SentimentAnalyzer exists but not integrated with collection
+**Reddit Sentiment Calculation:** ✅ **FIXED**
+- Enhanced with Claude LLM for superior sentiment analysis
+- Automatic fallback to traditional methods when LLM unavailable
+- Now calculates sentiment scores for all collected Reddit posts
 
 **Advanced Dashboard:**
 - `streamlit_app.py` has data management features but integration issues
@@ -71,6 +71,20 @@ StockAnalyzer Pro uses a weighted 4-component approach:
 python 3.9+
 pip install -r requirements.txt
 ```
+
+### Environment Setup
+For enhanced LLM sentiment analysis, add your Claude API key to `.env`:
+```bash
+# Copy example file
+cp .env.example .env
+
+# Add your Claude API key
+ANTHROPIC_API_KEY=your_claude_api_key_here
+# OR
+NEWS_API_KEY=your_claude_api_key_here
+```
+
+**Note:** System automatically falls back to traditional sentiment analysis if Claude API unavailable.
 
 ### Launch Working Dashboard
 ```bash

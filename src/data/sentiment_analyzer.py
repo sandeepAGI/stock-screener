@@ -1,5 +1,6 @@
 """
 Sentiment analysis module for news headlines and Reddit posts
+Enhanced with Claude LLM support for superior financial sentiment analysis
 """
 
 import pandas as pd
@@ -8,10 +9,21 @@ from typing import Dict, List, Optional, Tuple
 import logging
 from dataclasses import dataclass
 import re
+import os
+import json
+import time
 
 # Sentiment analysis libraries
 from textblob import TextBlob
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+
+# LLM support
+try:
+    import anthropic
+    ANTHROPIC_AVAILABLE = True
+except ImportError:
+    ANTHROPIC_AVAILABLE = False
+    logging.warning("Anthropic library not available. LLM sentiment analysis will be disabled.")
 
 logger = logging.getLogger(__name__)
 
@@ -21,15 +33,34 @@ class SentimentScore:
     text: str
     sentiment_score: float  # -1 (negative) to 1 (positive)
     data_quality: float      # 0 to 1
-    method: str           # 'textblob', 'vader', or 'combined'
+    method: str           # 'textblob', 'vader', 'combined', 'claude', or 'claude_fallback'
+    confidence: Optional[float] = None  # LLM confidence score
+    reasoning: Optional[str] = None     # LLM reasoning (for debugging)
     
 class SentimentAnalyzer:
     """
     Multi-method sentiment analysis for financial text
+    Enhanced with Claude LLM for superior financial context understanding
     """
-    
-    def __init__(self):
+
+    def __init__(self, anthropic_api_key: Optional[str] = None, use_llm: bool = True):
         self.vader = SentimentIntensityAnalyzer()
+        self.use_llm = use_llm and ANTHROPIC_AVAILABLE
+        self.claude_client = None
+
+        # Initialize Claude client if available
+        if self.use_llm:
+            api_key = anthropic_api_key or os.getenv('ANTHROPIC_API_KEY') or os.getenv('NEWS_API_KEY')
+            if api_key:
+                try:
+                    self.claude_client = anthropic.Anthropic(api_key=api_key)
+                    logger.info("Claude LLM sentiment analysis enabled")
+                except Exception as e:
+                    logger.warning(f"Failed to initialize Claude client: {e}")
+                    self.use_llm = False
+            else:
+                logger.warning("No Anthropic API key found. Set ANTHROPIC_API_KEY environment variable.")
+                self.use_llm = False
         
         # Financial keywords that modify sentiment
         self.positive_financial_terms = {
@@ -44,28 +75,50 @@ class SentimentAnalyzer:
             'plunge', 'concern', 'warning', 'risk', 'volatility'
         }
         
-    def analyze_text(self, text: str, method: str = 'combined') -> SentimentScore:
+    def analyze_text(self, text: str, method: str = 'auto') -> SentimentScore:
         """
         Analyze sentiment of a text string
-        
+
         Args:
             text: Text to analyze
-            method: 'textblob', 'vader', or 'combined'
-            
+            method: 'auto', 'claude', 'textblob', 'vader', 'combined', or 'claude_fallback'
+                   'auto' uses Claude if available, otherwise falls back to combined
+
         Returns:
             SentimentScore object
         """
         if not text or not text.strip():
             return SentimentScore(text, 0.0, 0.0, method)
-            
+
         try:
-            if method == 'textblob':
+            # Auto method: prefer Claude if available, fallback to combined
+            if method == 'auto':
+                if self.use_llm and self.claude_client:
+                    try:
+                        return self._claude_analysis(text)
+                    except Exception as e:
+                        logger.warning(f"Claude analysis failed, falling back to combined: {e}")
+                        return self._combined_analysis(text)
+                else:
+                    return self._combined_analysis(text)
+            elif method == 'claude':
+                return self._claude_analysis(text)
+            elif method == 'claude_fallback':
+                # Try Claude first, fallback to combined if it fails
+                try:
+                    return self._claude_analysis(text)
+                except Exception as e:
+                    logger.debug(f"Claude analysis failed, using combined method: {e}")
+                    result = self._combined_analysis(text)
+                    result.method = 'claude_fallback'
+                    return result
+            elif method == 'textblob':
                 return self._textblob_analysis(text)
             elif method == 'vader':
                 return self._vader_analysis(text)
             else:  # combined
                 return self._combined_analysis(text)
-                
+
         except Exception as e:
             logger.error(f"Error analyzing sentiment: {str(e)}")
             return SentimentScore(text, 0.0, 0.0, method)
@@ -117,7 +170,158 @@ class SentimentAnalyzer:
         combined_data_quality = max(0.0, min(1.0, combined_data_quality))
         
         return SentimentScore(text, combined_sentiment, combined_data_quality, 'combined')
-        
+
+    def _claude_analysis(self, text: str) -> SentimentScore:
+        """
+        Claude LLM sentiment analysis for superior financial text understanding
+        """
+        if not self.claude_client:
+            raise Exception("Claude client not initialized")
+
+        # Determine the text type for appropriate prompting
+        text_type = self._detect_text_type(text)
+
+        # Create specialized prompt based on text type
+        prompt = self._create_claude_prompt(text, text_type)
+
+        try:
+            response = self.claude_client.messages.create(
+                model="claude-3-haiku-20240307",  # Fast and cost-effective
+                max_tokens=200,
+                temperature=0.1,  # Low temperature for consistent results
+                messages=[
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ]
+            )
+
+            # Parse Claude's response
+            result = self._parse_claude_response(response.content[0].text, text)
+            return result
+
+        except Exception as e:
+            logger.error(f"Claude API error: {str(e)}")
+            raise
+
+    def _detect_text_type(self, text: str) -> str:
+        """Detect the type of financial text for appropriate prompting"""
+        text_lower = text.lower()
+
+        if any(term in text_lower for term in ['reddit', 'comment', 'wsb', 'stonks', 'ape', 'diamond hands', 'to the moon']):
+            return 'social_media'
+        elif any(term in text_lower for term in ['earnings', 'quarterly', 'revenue', 'eps', 'guidance', 'analyst']):
+            return 'earnings_news'
+        elif any(term in text_lower for term in ['sec filing', '10-k', '10-q', 'proxy', 'form']):
+            return 'regulatory_filing'
+        elif any(term in text_lower for term in ['fed', 'interest rate', 'inflation', 'gdp', 'unemployment']):
+            return 'macro_economic'
+        else:
+            return 'general_financial'
+
+    def _create_claude_prompt(self, text: str, text_type: str) -> str:
+        """Create specialized prompts for different types of financial text"""
+
+        base_instruction = """You are a financial sentiment analysis expert. Analyze the following text and provide a sentiment score.
+
+Return your response in this exact JSON format:
+{
+    "sentiment_score": <float between -1.0 and 1.0>,
+    "confidence": <float between 0.0 and 1.0>,
+    "reasoning": "<brief explanation of sentiment factors>"
+}
+
+Where:
+- sentiment_score: -1.0 = very negative, 0.0 = neutral, 1.0 = very positive
+- confidence: How confident you are in this assessment
+- reasoning: Key factors that influenced the sentiment
+
+"""
+
+        if text_type == 'social_media':
+            specific_instruction = """This is social media content (Reddit/Twitter). Consider:
+- Sarcasm, memes, and informal language
+- Retail investor sentiment and speculation
+- Community sentiment and herd mentality
+- Emojis and slang (🚀, 💎, 🦍, HODL, etc.)
+"""
+        elif text_type == 'earnings_news':
+            specific_instruction = """This is earnings/financial news. Consider:
+- Actual vs expected performance
+- Forward guidance and outlook
+- Management commentary tone
+- Market impact and implications
+"""
+        elif text_type == 'regulatory_filing':
+            specific_instruction = """This is regulatory/SEC filing content. Consider:
+- Risk factors and legal language
+- Business outlook and strategy
+- Compliance and governance issues
+- Material changes or disclosures
+"""
+        elif text_type == 'macro_economic':
+            specific_instruction = """This is macroeconomic news. Consider:
+- Federal Reserve policy implications
+- Economic indicators and trends
+- Market-wide impact potential
+- Sector-specific effects
+"""
+        else:
+            specific_instruction = """This is general financial content. Consider:
+- Overall market sentiment
+- Company-specific factors
+- Industry trends and competition
+- Investment implications
+"""
+
+        return f"{base_instruction}\n{specific_instruction}\n\nText to analyze:\n\"{text}\""
+
+    def _parse_claude_response(self, response: str, original_text: str) -> SentimentScore:
+        """Parse Claude's JSON response into SentimentScore object"""
+        try:
+            # Extract JSON from response (in case there's extra text)
+            import json
+            json_start = response.find('{')
+            json_end = response.rfind('}') + 1
+            if json_start >= 0 and json_end > json_start:
+                json_str = response[json_start:json_end]
+                data = json.loads(json_str)
+            else:
+                raise ValueError("No valid JSON found in response")
+
+            sentiment_score = float(data.get('sentiment_score', 0.0))
+            confidence = float(data.get('confidence', 0.5))
+            reasoning = data.get('reasoning', 'No reasoning provided')
+
+            # Ensure bounds
+            sentiment_score = max(-1.0, min(1.0, sentiment_score))
+            confidence = max(0.0, min(1.0, confidence))
+
+            return SentimentScore(
+                text=original_text,
+                sentiment_score=sentiment_score,
+                data_quality=confidence,  # Use confidence as data quality
+                method='claude',
+                confidence=confidence,
+                reasoning=reasoning
+            )
+
+        except (json.JSONDecodeError, ValueError, KeyError) as e:
+            logger.error(f"Failed to parse Claude response: {e}. Response: {response}")
+            # Fallback: try to extract just the number
+            try:
+                import re
+                numbers = re.findall(r'-?\d+\.?\d*', response)
+                if numbers:
+                    sentiment_score = max(-1.0, min(1.0, float(numbers[0])))
+                    return SentimentScore(original_text, sentiment_score, 0.3, 'claude', 0.3, "Parsed from malformed response")
+            except:
+                pass
+
+            # Final fallback
+            return SentimentScore(original_text, 0.0, 0.1, 'claude', 0.1, f"Parse error: {str(e)}")
+
     def _calculate_financial_weight(self, text: str) -> float:
         """
         Calculate weighting factor based on financial terms
