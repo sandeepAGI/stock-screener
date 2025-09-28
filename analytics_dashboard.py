@@ -629,15 +629,30 @@ def show_individual_stock_analysis(df: pd.DataFrame):
 
     with col2:
         st.markdown("**⚠️ Areas for Attention**")
-        # Show bottom 2 components if they're concerning
-        for name, score in component_scores[-2:]:
-            if score < 50:
-                st.warning(f"• {name} metrics need attention ({score:.1f}/100)")
-            elif score < 60:
-                st.info(f"• {name} has room for improvement ({score:.1f}/100)")
 
-        if all(score >= 60 for _, score in component_scores):
-            st.success("✓ Strong performance across all metrics")
+        # Look for areas that need attention
+        attention_areas = []
+        for name, score in component_scores:
+            if score < 50:
+                attention_areas.append((name, score, "warning"))
+            elif score < 60:
+                attention_areas.append((name, score, "info"))
+
+        if attention_areas:
+            # Show areas that actually need attention
+            for name, score, alert_type in attention_areas:
+                if alert_type == "warning":
+                    st.warning(f"• {name} metrics need attention ({score:.1f}/100)")
+                else:
+                    st.info(f"• {name} has room for improvement ({score:.1f}/100)")
+        else:
+            # If no areas need attention, show the weakest relative areas for monitoring
+            weakest_scores = component_scores[-2:]  # Bottom 2 scores
+            st.info("**📊 Areas to Monitor (relative weaknesses):**")
+            for name, score in weakest_scores:
+                relative_weakness = "lowest" if score == component_scores[-1][1] else "second lowest"
+                st.info(f"• {name}: {score:.1f}/100 ({relative_weakness} component)")
+            st.success(f"💪 Overall strong performance - all metrics above 60")
 
 def show_methodology_guide():
     """Display the methodology guide page."""
