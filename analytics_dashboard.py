@@ -296,14 +296,14 @@ def show_weight_adjusted_rankings(original_df: pd.DataFrame, adjusted_df: pd.Dat
     else:
         st.info("No significant ranking changes (±5 positions) with current weight adjustment")
 
-def show_top_performers(df: pd.DataFrame, top_n: int = 5, ascending: bool = False) -> None:
+def show_top_performers(df: pd.DataFrame, top_n: int = 5, ascending: bool = False, score_column: str = 'composite_score') -> None:
     """Display top N stocks in a formatted table."""
     if ascending:
-        top_stocks = df.nsmallest(top_n, 'composite_score')
+        top_stocks = df.nsmallest(top_n, score_column)
         container_class = "overvalued"
         title = f"🔴 Most Overvalued (Bottom {top_n})"
     else:
-        top_stocks = df.nlargest(top_n, 'composite_score')
+        top_stocks = df.nlargest(top_n, score_column)
         container_class = "undervalued"
         title = f"🟢 Most Undervalued (Top {top_n})"
 
@@ -330,10 +330,17 @@ def show_top_performers(df: pd.DataFrame, top_n: int = 5, ascending: bool = Fals
                 """, unsafe_allow_html=True)
 
             with col3:
-                st.metric("Score", f"{stock['composite_score']:.1f}")
+                # Use the appropriate score column
+                score_value = stock[score_column] if score_column in stock else stock.get('composite_score', 0)
+                st.metric("Score", f"{score_value:.1f}")
 
             with col4:
-                st.metric("Rank", f"#{int(stock['composite_rank'])}")
+                # Use the appropriate rank column
+                if score_column == 'custom_composite_score':
+                    rank_value = stock.get('custom_composite_rank', stock.get('composite_rank', 0))
+                else:
+                    rank_value = stock.get('composite_rank', 0)
+                st.metric("Rank", f"#{int(rank_value)}")
 
 def show_detailed_analysis(symbol: str, df: pd.DataFrame):
     """Show detailed analysis for a selected stock with sentiment data."""
@@ -456,25 +463,36 @@ def show_individual_stock_analysis(df: pd.DataFrame):
         st.error("No data available for individual stock analysis.")
         return
 
-    # Stock selection
+    # Stock selection with enhanced searchability
     col1, col2 = st.columns([2, 1])
 
     with col1:
-        # Create options with company names
+        # Create searchable options - prioritize by score for better defaults
+        df_sorted = df.sort_values('composite_score', ascending=False)
+
+        # Create options with both symbol and company name for better searchability
         stock_options = {}
-        for _, row in df.iterrows():
-            display_name = f"{row['symbol']} - {row['company_name']}"
+        for _, row in df_sorted.iterrows():
+            # Format: "AAPL - Apple Inc. (Score: 85.2)"
+            display_name = f"{row['symbol']} - {row['company_name']} (Score: {row['composite_score']:.1f})"
             stock_options[display_name] = row['symbol']
 
+        # Instructions for search
+        st.markdown("**💡 Search Tips:** Type ticker symbol (e.g., 'AAPL') or company name (e.g., 'Apple') to quickly find stocks")
+
         selected_display = st.selectbox(
-            "Select a stock to analyze:",
+            "🔍 Select a stock to analyze:",
             options=list(stock_options.keys()),
-            help="Choose a stock to see detailed component analysis"
+            help="Start typing to search by ticker symbol or company name. Stocks are sorted by composite score (highest first).",
+            key="stock_selector"
         )
         selected_symbol = stock_options[selected_display]
 
     with col2:
         st.metric("Total Stocks", len(df))
+        # Show selected stock's rank
+        selected_rank = df[df['symbol'] == selected_symbol]['composite_rank'].iloc[0]
+        st.metric("Selected Rank", f"#{int(selected_rank)}")
 
     # Get selected stock data
     stock_data = df[df['symbol'] == selected_symbol].iloc[0]
@@ -1014,16 +1032,10 @@ def main():
         col_under, col_over = st.columns(2)
 
         with col_under:
-            if weights_changed:
-                show_top_performers(main_df.rename(columns={'custom_composite_score': 'composite_score'}), 5, False)
-            else:
-                show_top_performers(main_df, 5, False)
+            show_top_performers(main_df, 5, False, score_column)
 
         with col_over:
-            if weights_changed:
-                show_top_performers(main_df.rename(columns={'custom_composite_score': 'composite_score'}), 5, True)
-            else:
-                show_top_performers(main_df, 5, True)
+            show_top_performers(main_df, 5, True, score_column)
 
         # Analytics visualizations
         st.subheader("📊 Distribution Analysis")
