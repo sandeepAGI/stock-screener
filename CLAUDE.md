@@ -251,11 +251,209 @@ Before marking any major feature as complete:
    - ANTHROPIC_API_KEY (or NEWS_API_KEY)
    - Automatic fallback to traditional analysis if unavailable
 
+## 🚀 STREAMLIT DASHBOARD CONSOLIDATION PLAN
+
+### **Current Architecture Analysis**
+
+**Three Dashboard Files Identified:**
+- `analytics_dashboard.py` (1,077 lines) - Clean, working demo version
+- `streamlit_app.py` (1,884 lines) - Full-featured but broken data management
+- `launch_dashboard.py` (91 lines) - Launcher utility
+
+**Selected Approach: Option 1 - Enhance analytics_dashboard.py**
+- ✅ **Foundation:** Working, clean interface with professional styling
+- ✅ **Proven:** Weight customization, score analysis, radar charts functional
+- ✅ **Maintainable:** Simpler codebase, fewer potential issues
+
+### **🎯 IMPLEMENTATION ROADMAP**
+
+#### **Phase 1: Foundation & Testing (Session 1)**
+**Duration:** 1-2 hours
+**Goal:** Establish working baseline and testing framework
+
+**Tasks:**
+1. **Backup & Setup**
+   - Create backup of current `analytics_dashboard.py`
+   - Test current functionality to ensure nothing breaks
+   - Set up testing protocol for each enhancement
+
+2. **Architecture Review**
+   - Analyze existing tab structure and navigation
+   - Document current working features to preserve
+   - Plan integration points for new functionality
+
+**Testing Checkpoints:**
+- [ ] Current dashboard loads without errors
+- [ ] Weight sliders function correctly
+- [ ] Stock rankings update with weight changes
+- [ ] Radar charts render properly
+
+#### **Phase 2: Individual Stock Analysis Integration (Session 2)**
+**Duration:** 2-3 hours
+**Goal:** Add detailed stock analysis capabilities
+
+**Tasks:**
+1. **Extract Stock Analysis Components**
+   - Port individual stock analysis from `streamlit_app.py`
+   - Adapt component score breakdowns for current UI
+   - Integrate data quality analysis features
+
+2. **UI Integration**
+   - Add new tab: "📈 Individual Stock Analysis"
+   - Create stock selection interface
+   - Implement component score visualizations
+
+3. **Testing Protocol**
+   - Test stock selection dropdown functionality
+   - Verify component score displays
+   - Validate data quality indicators
+   - Ensure UI styling consistency
+
+**Testing Checkpoints:**
+- [ ] Individual stock tab loads correctly
+- [ ] Stock selection dropdown populated with database stocks
+- [ ] Component scores display accurate data
+- [ ] Data quality metrics render properly
+- [ ] Styling matches existing dashboard theme
+
+#### **Phase 3: Data Management Integration (Session 3)**
+**Duration:** 3-4 hours
+**Goal:** Add working data collection and refresh capabilities
+
+**Tasks:**
+1. **Import Data Collection System**
+   - Integrate `DataCollectionOrchestrator` from working utilities
+   - Connect `smart_refresh.py` functionality to UI
+   - Add progress tracking and status displays
+
+2. **UI Components**
+   - Add new tab: "🗄️ Data Management"
+   - Create data source status dashboard
+   - Implement refresh control buttons
+
+3. **Real Functionality**
+   - Connect buttons to actual data collection
+   - Add progress bars and status updates
+   - Implement error handling and user feedback
+
+**Testing Checkpoints:**
+- [ ] Data management tab loads without errors
+- [ ] Data source status displays correctly
+- [ ] Refresh buttons trigger actual data collection
+- [ ] Progress indicators work during collection
+- [ ] Error handling displays user-friendly messages
+- [ ] Database updates reflect in main dashboard
+
+#### **Phase 4: API Configuration & Advanced Features (Session 4)**
+**Duration:** 2-3 hours
+**Goal:** Complete data management with API configuration
+
+**Tasks:**
+1. **API Configuration Interface**
+   - Add Claude API key management
+   - Include Reddit API credentials setup
+   - Implement API status monitoring
+
+2. **Advanced Data Controls**
+   - Selective data type refresh (fundamentals, sentiment, prices)
+   - Symbol-specific refresh capability
+   - Data freshness monitoring
+
+3. **Quality & Backup Integration**
+   - Connect backup utility to UI
+   - Add data quality analytics dashboard
+   - Implement automated backup before major updates
+
+**Testing Checkpoints:**
+- [ ] API configuration saves and loads correctly
+- [ ] Claude LLM sentiment analysis works via UI
+- [ ] Selective refresh functions operate correctly
+- [ ] Backup system integrates smoothly
+- [ ] Quality analytics display meaningful data
+
+#### **Phase 5: Cleanup & Documentation (Session 5)**
+**Duration:** 1-2 hours
+**Goal:** Finalize consolidation and clean architecture
+
+**Tasks:**
+1. **File Cleanup**
+   - Archive or remove `streamlit_app.py`
+   - Update `launch_dashboard.py` to use consolidated app
+   - Update `run_demo.sh` to use single application
+
+2. **Documentation Updates**
+   - Update README.md with single dashboard instructions
+   - Update CLAUDE.md to reflect consolidated architecture
+   - Document new features and capabilities
+
+3. **Final Testing**
+   - Complete end-to-end workflow testing
+   - Verify all features work together
+   - Performance testing with real data
+
+**Testing Checkpoints:**
+- [ ] Single dashboard serves all use cases
+- [ ] All data management functions work end-to-end
+- [ ] No broken links or references to old files
+- [ ] Documentation accurately reflects current system
+- [ ] Performance is acceptable with real database
+
+### **🧪 TESTING PROTOCOLS**
+
+#### **Before Each Phase:**
+1. Create git commit with current working state
+2. Test all existing functionality works
+3. Document any issues or dependencies
+
+#### **During Development:**
+1. Test each component as it's added
+2. Verify integration doesn't break existing features
+3. Check styling and UX consistency
+
+#### **After Each Phase:**
+1. Complete end-to-end testing of new features
+2. Regression testing of existing functionality
+3. Update documentation for completed features
+4. Git commit with descriptive message
+
+### **🚨 RISK MITIGATION**
+
+**Backup Strategy:**
+- Git commits before each major change
+- Keep `analytics_dashboard.py.backup` during development
+- Maintain rollback capability at each phase
+
+**Testing Requirements:**
+- Never mark a phase complete without full testing
+- User confirmation before proceeding to next phase
+- Document any deviations from plan
+
+**Quality Gates:**
+- Each phase must pass all testing checkpoints
+- No regression in existing functionality
+- UI/UX consistency maintained throughout
+
+### **📋 SUCCESS CRITERIA**
+
+**Completed System Will Have:**
+- [ ] Single, unified Streamlit dashboard
+- [ ] Working data collection and refresh capabilities
+- [ ] Individual stock analysis with component breakdowns
+- [ ] Claude LLM integration for sentiment analysis
+- [ ] API configuration and management
+- [ ] Data quality monitoring and analytics
+- [ ] Professional, consistent UI/UX
+- [ ] Complete documentation and testing
+
+**Files to Remove After Completion:**
+- `streamlit_app.py` (archive to `archive/` directory)
+- Update launcher scripts to use consolidated app
+
 ## 🚀 NEXT STEPS
 
 1. ~~**Implement Reddit sentiment calculation**~~ ✅ **COMPLETED** with Claude LLM integration
-2. **Test both dashboards** to identify specific error conditions
-3. **Create migration plan** to consolidate dashboard implementations
+2. ~~**Create migration plan**~~ ✅ **COMPLETED** - Dashboard consolidation plan above
+3. **NEXT SESSION: Begin Phase 1** - Foundation & Testing
 4. **Complete data refresh testing** to ensure database update functionality
 5. **Update this documentation** as fixes are completed
 
