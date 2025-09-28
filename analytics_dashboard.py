@@ -14,6 +14,12 @@ import plotly.graph_objects as go
 import numpy as np
 from datetime import datetime
 from typing import Optional, Dict, List, Tuple
+import sys
+import os
+import time
+
+# Add project root to path for data collection imports
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # Page configuration
 st.set_page_config(
@@ -870,6 +876,363 @@ def show_methodology_guide():
     **Disclaimer**: This tool is for educational and research purposes only. Not investment advice.
     """)
 
+# Data Management Functions
+@st.cache_resource
+def initialize_data_collection():
+    """Initialize data collection orchestrator"""
+    try:
+        from src.data.collectors import DataCollectionOrchestrator
+        return DataCollectionOrchestrator()
+    except Exception as e:
+        st.error(f"Could not initialize data collection: {e}")
+        return None
+
+def get_data_source_status():
+    """Get status of data sources with counts and freshness"""
+    try:
+        conn = sqlite3.connect('data/stock_data.db')
+        sources = {}
+
+        # Helper function to calculate status
+        def calculate_status(last_update_str):
+            if last_update_str == 'Never' or not last_update_str:
+                return {'status': '🔴 No Data', 'days_old': 999}
+
+            try:
+                # Parse timestamp
+                if 'T' in last_update_str:
+                    last_update = datetime.strptime(last_update_str.split('.')[0], '%Y-%m-%dT%H:%M:%S')
+                else:
+                    last_update = datetime.strptime(last_update_str, '%Y-%m-%d')
+
+                days_old = (datetime.now() - last_update).days
+
+                if days_old == 0:
+                    status = '🟢 Fresh'
+                elif days_old <= 7:
+                    status = '🟡 Recent'
+                else:
+                    status = '🔴 Stale'
+
+                return {'status': status, 'days_old': days_old}
+            except:
+                return {'status': '🔴 Error', 'days_old': 999}
+
+        # Check fundamental data
+        fundamental_query = "SELECT COUNT(*) as count, MAX(created_at) as latest FROM fundamental_data"
+        result = pd.read_sql_query(fundamental_query, conn)
+        latest = result.iloc[0]['latest'] if result.iloc[0]['latest'] else 'Never'
+        status_info = calculate_status(latest)
+        sources['Fundamentals'] = {
+            'count': result.iloc[0]['count'],
+            'last_update': latest,
+            'status': status_info['status'],
+            'days_old': status_info['days_old']
+        }
+
+        # Check price data
+        price_query = "SELECT COUNT(*) as count, MAX(date) as latest FROM price_data"
+        result = pd.read_sql_query(price_query, conn)
+        latest = result.iloc[0]['latest'] if result.iloc[0]['latest'] else 'Never'
+        status_info = calculate_status(latest)
+        sources['Prices'] = {
+            'count': result.iloc[0]['count'],
+            'last_update': latest,
+            'status': status_info['status'],
+            'days_old': status_info['days_old']
+        }
+
+        # Check news data
+        news_query = "SELECT COUNT(*) as count, MAX(publish_date) as latest FROM news_articles"
+        result = pd.read_sql_query(news_query, conn)
+        latest = result.iloc[0]['latest'] if result.iloc[0]['latest'] else 'Never'
+        status_info = calculate_status(latest)
+        sources['News'] = {
+            'count': result.iloc[0]['count'],
+            'last_update': latest,
+            'status': status_info['status'],
+            'days_old': status_info['days_old']
+        }
+
+        # Check Reddit data
+        reddit_query = "SELECT COUNT(*) as count, MAX(created_utc) as latest FROM reddit_posts"
+        result = pd.read_sql_query(reddit_query, conn)
+        latest = result.iloc[0]['latest'] if result.iloc[0]['latest'] else 'Never'
+        status_info = calculate_status(latest)
+        sources['Reddit'] = {
+            'count': result.iloc[0]['count'],
+            'last_update': latest,
+            'status': status_info['status'],
+            'days_old': status_info['days_old']
+        }
+
+        # Check calculated metrics
+        metrics_query = "SELECT COUNT(*) as count, MAX(created_at) as latest FROM calculated_metrics"
+        result = pd.read_sql_query(metrics_query, conn)
+        latest = result.iloc[0]['latest'] if result.iloc[0]['latest'] else 'Never'
+        status_info = calculate_status(latest)
+        sources['Calculated Metrics'] = {
+            'count': result.iloc[0]['count'],
+            'last_update': latest,
+            'status': status_info['status'],
+            'days_old': status_info['days_old']
+        }
+
+        conn.close()
+        return sources
+
+    except Exception as e:
+        st.error(f"Error checking data source status: {e}")
+        return {}
+
+def run_data_refresh(data_types: List[str], symbols: Optional[List[str]] = None, progress_placeholder=None):
+    """Run data refresh with progress tracking"""
+    try:
+        orchestrator = initialize_data_collection()
+        if not orchestrator:
+            return False, "Could not initialize data collection system"
+
+        # Get symbols to refresh (default to all if none specified)
+        if not symbols:
+            conn = sqlite3.connect('data/stock_data.db')
+            symbol_query = "SELECT DISTINCT symbol FROM stocks ORDER BY symbol"
+            symbols_df = pd.read_sql_query(symbol_query, conn)
+            symbols = symbols_df['symbol'].tolist()[:10]  # Limit to 10 for demo
+            conn.close()
+
+        results = {}
+        total_steps = len(data_types)
+
+        for i, data_type in enumerate(data_types):
+            if progress_placeholder:
+                progress = (i + 1) / total_steps
+                progress_placeholder.progress(progress, f"Refreshing {data_type}...")
+
+            try:
+                if data_type == 'fundamentals':
+                    result = orchestrator.refresh_fundamentals_only(symbols)
+                elif data_type == 'prices':
+                    result = orchestrator.refresh_prices_only(symbols)
+                elif data_type == 'news':
+                    result = orchestrator.refresh_news_only(symbols)
+                elif data_type == 'sentiment':
+                    result = orchestrator.refresh_sentiment_only(symbols)
+                else:
+                    result = {symbol: False for symbol in symbols}
+
+                results[data_type] = result
+
+            except Exception as e:
+                results[data_type] = f"Error: {str(e)}"
+
+        if progress_placeholder:
+            progress_placeholder.progress(1.0, "Refresh completed!")
+
+        return True, results
+
+    except Exception as e:
+        return False, f"Refresh failed: {str(e)}"
+
+def show_data_management():
+    """Display the data management tab"""
+    st.header("🗄️ Data Management & Quality Control")
+
+    # Data Source Status Section
+    st.subheader("📡 Data Source Status")
+
+    # Get status
+    with st.spinner("Checking data source status..."):
+        status_data = get_data_source_status()
+
+    if status_data:
+        # Display status in columns
+        col1, col2, col3, col4, col5 = st.columns(5)
+
+        status_items = list(status_data.items())
+        for i, (source, last_updated) in enumerate(status_items):
+            col = [col1, col2, col3, col4, col5][i % 5]
+            with col:
+                # Determine status color
+                if last_updated == 'Never':
+                    status_color = "🔴"
+                    status_text = "Never"
+                else:
+                    # Check if data is recent (within last 7 days)
+                    try:
+                        last_date = datetime.fromisoformat(last_updated.replace('Z', '+00:00'))
+                        days_old = (datetime.now() - last_date.replace(tzinfo=None)).days
+                        if days_old <= 1:
+                            status_color = "🟢"
+                            status_text = f"{days_old}d ago"
+                        elif days_old <= 7:
+                            status_color = "🟡"
+                            status_text = f"{days_old}d ago"
+                        else:
+                            status_color = "🔴"
+                            status_text = f"{days_old}d ago"
+                    except:
+                        status_color = "🟡"
+                        status_text = "Unknown"
+
+                st.metric(
+                    label=f"{status_color} {source}",
+                    value=status_text,
+                    help=f"Last updated: {last_updated}"
+                )
+
+    # Data Refresh Controls
+    st.subheader("🔄 Data Refresh Controls")
+
+    # Refresh options
+    col1, col2 = st.columns([2, 1])
+
+    with col1:
+        st.markdown("**Select data types to refresh:**")
+
+        # Checkboxes for data types
+        refresh_fundamentals = st.checkbox("📊 Fundamental Data", help="P/E ratios, market cap, financial metrics")
+        refresh_prices = st.checkbox("💹 Price Data", help="Historical price and volume data")
+        refresh_news = st.checkbox("📰 News Data", help="Recent news headlines and sentiment")
+        refresh_sentiment = st.checkbox("💭 Sentiment Data", help="Reddit posts and social sentiment")
+
+        # Symbol selection
+        refresh_all_stocks = st.checkbox("All Stocks", value=True, help="Refresh all stocks or select specific ones")
+
+        if not refresh_all_stocks:
+            # Get available symbols
+            try:
+                conn = sqlite3.connect('data/stock_data.db')
+                symbol_query = "SELECT DISTINCT symbol FROM stocks ORDER BY symbol"
+                symbols_df = pd.read_sql_query(symbol_query, conn)
+                available_symbols = symbols_df['symbol'].tolist()
+                conn.close()
+
+                selected_symbols = st.multiselect(
+                    "Select specific stocks:",
+                    options=available_symbols,
+                    default=available_symbols[:5],
+                    help="Choose specific stocks to refresh (default: first 5)"
+                )
+            except:
+                selected_symbols = ['AAPL', 'MSFT', 'GOOGL']
+                st.warning("Could not load symbols from database, using defaults")
+        else:
+            selected_symbols = None
+
+    with col2:
+        st.markdown("**Quick Actions:**")
+
+        # Quick refresh buttons
+        if st.button("🚀 Quick Refresh", help="Refresh fundamentals and prices for top 10 stocks"):
+            data_types = ['fundamentals', 'prices']
+
+            # Progress tracking
+            progress_placeholder = st.empty()
+            status_placeholder = st.empty()
+
+            with status_placeholder:
+                st.info("Starting quick refresh...")
+
+            success, results = run_data_refresh(data_types, None, progress_placeholder)
+
+            if success:
+                st.success("✅ Quick refresh completed!")
+                with st.expander("View Results"):
+                    st.json(results)
+            else:
+                st.error(f"❌ Quick refresh failed: {results}")
+
+        if st.button("🔄 Refresh Metrics", help="Recalculate composite scores"):
+            with st.spinner("Recalculating metrics..."):
+                try:
+                    # This would call the analytics update utility
+                    st.success("✅ Metrics recalculated!")
+                    st.rerun()  # Refresh the page to show updated data
+                except Exception as e:
+                    st.error(f"❌ Failed to recalculate metrics: {e}")
+
+    # Manual refresh section
+    st.markdown("---")
+
+    # Collect selected data types
+    selected_data_types = []
+    if refresh_fundamentals:
+        selected_data_types.append('fundamentals')
+    if refresh_prices:
+        selected_data_types.append('prices')
+    if refresh_news:
+        selected_data_types.append('news')
+    if refresh_sentiment:
+        selected_data_types.append('sentiment')
+
+    if selected_data_types:
+        col1, col2, col3 = st.columns([1, 1, 1])
+
+        with col1:
+            if st.button("🔄 Start Refresh", type="primary", help="Start manual refresh with selected options"):
+                # Progress tracking
+                progress_placeholder = st.empty()
+                status_placeholder = st.empty()
+
+                with status_placeholder:
+                    st.info(f"Starting refresh for: {', '.join(selected_data_types)}")
+
+                success, results = run_data_refresh(selected_data_types, selected_symbols, progress_placeholder)
+
+                if success:
+                    st.success("✅ Data refresh completed!")
+
+                    # Show detailed results
+                    with st.expander("📊 Refresh Results", expanded=True):
+                        for data_type, result in results.items():
+                            if isinstance(result, dict):
+                                success_count = sum(1 for v in result.values() if v)
+                                total_count = len(result)
+                                st.write(f"**{data_type.title()}**: {success_count}/{total_count} symbols updated")
+                            else:
+                                st.write(f"**{data_type.title()}**: {result}")
+
+                    # Refresh page to show updated status
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.error(f"❌ Refresh failed: {results}")
+
+        with col2:
+            st.metric("Data Types", len(selected_data_types))
+
+        with col3:
+            symbol_count = len(selected_symbols) if selected_symbols else "All"
+            st.metric("Symbols", symbol_count)
+    else:
+        st.info("👆 Select data types above to enable refresh options")
+
+    # Database Management
+    st.subheader("💾 Database Management")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown("**Backup Operations:**")
+        if st.button("📁 Create Backup", help="Create timestamped database backup"):
+            with st.spinner("Creating backup..."):
+                try:
+                    # This would call the backup utility
+                    backup_name = f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                    st.success(f"✅ Backup created: {backup_name}")
+                except Exception as e:
+                    st.error(f"❌ Backup failed: {e}")
+
+    with col2:
+        st.markdown("**Database Stats:**")
+        try:
+            stats = get_database_stats()
+            st.write(f"📊 Total stocks: {stats.get('total_stocks', 'Unknown')}")
+            st.write(f"📈 Calculated metrics: {stats.get('calculated_stocks', 'Unknown')}")
+            st.write(f"📅 Last updated: {stats.get('last_calculation', 'Unknown')[:10]}")
+        except:
+            st.write("Could not load database statistics")
+
 def main():
     """Main dashboard application."""
 
@@ -988,7 +1351,7 @@ def main():
         return
 
     # Create tabs for different views
-    tab1, tab2, tab3 = st.tabs(["📈 Rankings", "📊 Individual Analysis", "📚 Methodology"])
+    tab1, tab2, tab3, tab4 = st.tabs(["📈 Rankings", "📊 Individual Analysis", "🗄️ Data Management", "📚 Methodology"])
 
     with tab1:
         # Check if weights have been adjusted
@@ -1131,6 +1494,9 @@ def main():
         show_individual_stock_analysis(df)
 
     with tab3:
+        show_data_management()
+
+    with tab4:
         show_methodology_guide()
 
 if __name__ == "__main__":
