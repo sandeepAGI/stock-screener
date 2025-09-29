@@ -1154,33 +1154,104 @@ def show_data_management():
                     # Import and call the analytics update utility
                     from utilities.update_analytics import update_analytics
                     import logging
+                    import io
 
-                    # Create a simple logger for the utility
+                    # Create a string buffer to capture log output
+                    log_capture = io.StringIO()
+
+                    # Create a logger that writes to both console and our buffer
                     logger = logging.getLogger('dashboard_metrics')
                     logger.setLevel(logging.INFO)
 
-                    # Create handler if it doesn't exist
-                    if not logger.handlers:
-                        handler = logging.StreamHandler()
-                        formatter = logging.Formatter('%(message)s')
-                        handler.setFormatter(formatter)
-                        logger.addHandler(handler)
+                    # Clear existing handlers
+                    logger.handlers.clear()
+
+                    # Add handler for our capture
+                    capture_handler = logging.StreamHandler(log_capture)
+                    formatter = logging.Formatter('%(message)s')
+                    capture_handler.setFormatter(formatter)
+                    logger.addHandler(capture_handler)
 
                     # Call with force recalculate to ensure fresh calculations
                     success = update_analytics(symbols=None, force_recalculate=True, batch_size=50, logger=logger)
 
+                    # Get the captured log output
+                    log_output = log_capture.getvalue()
+
+                    # Parse results from log output
+                    success_stocks = []
+                    failed_stocks = []
+                    warnings = []
+
+                    for line in log_output.split('\n'):
+                        if '✅' in line and 'Analytics updated successfully' in line:
+                            symbol = line.split(':')[0].replace('✅ ', '').strip()
+                            success_stocks.append(symbol)
+                        elif '⚠️' in line and 'Analytics calculation failed' in line:
+                            symbol = line.split(':')[0].replace('⚠️  ', '').strip()
+                            failed_stocks.append(symbol)
+                        elif ('⚠️' in line or 'No reliable' in line or 'Insufficient data' in line or
+                              'data is' in line and 'days old' in line or 'No recent' in line or
+                              'quality concerns' in line):
+                            warnings.append(line.strip())
+
+                    # Display results
                     if success:
-                        st.success("✅ Metrics recalculated successfully!")
-                        st.info("📊 All composite scores have been updated with latest data")
+                        if len(failed_stocks) == 0:
+                            st.success("✅ Metrics recalculated successfully!")
+                            st.info(f"📊 All {len(success_stocks)} stocks updated with latest composite scores")
+                        else:
+                            st.warning("⚠️ Metrics calculation completed with some issues")
+                            st.info(f"📊 {len(success_stocks)} stocks updated successfully, {len(failed_stocks)} had issues")
                     else:
-                        st.warning("⚠️ Metrics calculation completed with some issues")
+                        st.error("❌ Metrics calculation failed")
+
+                    # Show detailed results in expandable sections
+                    if success_stocks:
+                        with st.expander(f"✅ Successfully Updated ({len(success_stocks)} stocks)", expanded=False):
+                            cols = st.columns(6)
+                            for i, symbol in enumerate(success_stocks):
+                                with cols[i % 6]:
+                                    st.write(f"✅ {symbol}")
+
+                    if failed_stocks:
+                        with st.expander(f"❌ Failed Updates ({len(failed_stocks)} stocks)", expanded=True):
+                            cols = st.columns(6)
+                            for i, symbol in enumerate(failed_stocks):
+                                with cols[i % 6]:
+                                    st.write(f"❌ {symbol}")
+
+                    if warnings:
+                        with st.expander(f"⚠️ Warnings & Issues ({len(warnings)} items)", expanded=True):
+                            for warning in warnings[:20]:  # Limit to first 20 warnings
+                                if warning.strip():
+                                    st.text(warning)
+                            if len(warnings) > 20:
+                                st.text(f"... and {len(warnings) - 20} more warnings")
+
+                    # Show summary statistics
+                    if success_stocks or failed_stocks:
+                        total_processed = len(success_stocks) + len(failed_stocks)
+                        success_rate = (len(success_stocks) / total_processed * 100) if total_processed > 0 else 0
+
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            st.metric("Success Rate", f"{success_rate:.1f}%")
+                        with col2:
+                            st.metric("Successful", len(success_stocks))
+                        with col3:
+                            st.metric("Failed", len(failed_stocks))
 
                     # Refresh the page to show updated data
                     time.sleep(1)  # Brief pause to ensure database writes complete
                     st.rerun()
+
                 except Exception as e:
                     st.error(f"❌ Failed to recalculate metrics: {e}")
                     st.error("💡 Try running: python utilities/update_analytics.py")
+                    import traceback
+                    with st.expander("🔍 Error Details"):
+                        st.code(traceback.format_exc())
 
     # Manual refresh section
     st.markdown("---")
