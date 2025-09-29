@@ -16,6 +16,7 @@ from src.utils.helpers import load_config, get_reddit_credentials, safe_divide
 from src.data.stock_universe import StockUniverseManager, UniverseType
 from src.data.database import DatabaseManager
 from src.data.sentiment_analyzer import SentimentAnalyzer
+from src.data.bulk_sentiment_processor import BulkSentimentProcessor
 
 logger = logging.getLogger(__name__)
 
@@ -322,6 +323,7 @@ class DataCollectionOrchestrator:
         self.db_manager.connect()
         self.db_manager.create_tables()
         self.sentiment_analyzer = SentimentAnalyzer()
+        self.bulk_sentiment_processor = BulkSentimentProcessor()
         
     def collect_complete_dataset(self, symbols: List[str]) -> Dict[str, StockData]:
         """
@@ -471,13 +473,14 @@ class DataCollectionOrchestrator:
                     from datetime import datetime
                     
                     news_articles = []
+                    # Collect articles first, then process sentiment in bulk
                     for news_item in news:
                         try:
                             # Parse publish date
                             publish_date = datetime.fromtimestamp(news_item.get('providerPublishTime', datetime.now().timestamp()))
                         except (ValueError, TypeError, KeyError):
                             publish_date = datetime.now()
-                        
+
                         article = NewsArticle(
                             symbol=symbol,
                             title=news_item.get('title', ''),
@@ -486,10 +489,14 @@ class DataCollectionOrchestrator:
                             publisher=news_item.get('publisher', ''),
                             publish_date=publish_date,
                             url=news_item.get('link', ''),
-                            sentiment_score=0.0,  # Will be calculated later
-                            data_quality_score=0.8  # Default quality score
+                            sentiment_score=0.0,  # Will be calculated in bulk below
+                            data_quality_score=0.8  # Will be updated with sentiment quality
                         )
                         news_articles.append(article)
+
+                    # ✅ CRITICAL FIX: Calculate sentiment scores for all articles
+                    if news_articles:
+                        self._calculate_bulk_sentiment_for_articles(news_articles)
                     
                     if news_articles:
                         self.db_manager.insert_news_articles(news_articles)
@@ -1044,6 +1051,78 @@ class DataCollectionOrchestrator:
             data_types=data_types,
             progress_callback=progress_callback
         )
+
+    def _calculate_bulk_sentiment_for_articles(self, articles: List):
+        """
+        Calculate sentiment scores for news articles using bulk processing when possible
+
+        Args:
+            articles: List of NewsArticle objects to process
+        """
+        if not articles:
+            return
+
+        try:
+            # Try bulk processing first (if Anthropic API is available)
+            if self.bulk_sentiment_processor.client:
+                logger.info(f"🚀 Using bulk sentiment processing for {len(articles)} articles")
+
+                # Prepare articles for bulk processing
+                news_data = []
+                for i, article in enumerate(articles):
+                    news_data.append((
+                        article.symbol,
+                        article.title,
+                        article.summary,
+                        {'index': i, 'article_id': getattr(article, 'id', i)}
+                    ))
+
+                # Process in bulk
+                bulk_results = self.bulk_sentiment_processor.process_bulk_sentiment(
+                    news_articles=news_data
+                )
+
+                # Update articles with bulk results
+                for symbol, symbol_results in bulk_results.items():
+                    for result in symbol_results:
+                        if result.success:
+                            # Extract index from custom_id
+                            try:
+                                parts = result.custom_id.split('_')
+                                if len(parts) >= 3:
+                                    index = int(parts[2])
+                                    if 0 <= index < len(articles):
+                                        articles[index].sentiment_score = result.sentiment_score
+                                        articles[index].data_quality_score = result.confidence
+                            except (ValueError, IndexError):
+                                logger.warning(f"⚠️  Could not parse index from {result.custom_id}")
+
+                logger.info(f"✅ Bulk sentiment processing completed for {len(articles)} articles")
+
+            else:
+                # Fallback to individual processing
+                logger.info(f"🔄 Using individual sentiment processing for {len(articles)} articles")
+                for article in articles:
+                    article_text = f"{article.title}. {article.summary}"
+                    sentiment_result = self.sentiment_analyzer.analyze_text(article_text)
+                    article.sentiment_score = sentiment_result.sentiment_score
+                    article.data_quality_score = sentiment_result.data_quality
+
+        except Exception as e:
+            logger.error(f"❌ Error in bulk sentiment processing: {str(e)}")
+            logger.info("🔄 Falling back to individual sentiment processing")
+
+            # Fallback to individual processing
+            for article in articles:
+                try:
+                    article_text = f"{article.title}. {article.summary}"
+                    sentiment_result = self.sentiment_analyzer.analyze_text(article_text)
+                    article.sentiment_score = sentiment_result.sentiment_score
+                    article.data_quality_score = sentiment_result.data_quality
+                except Exception as individual_error:
+                    logger.warning(f"⚠️  Failed to calculate sentiment for article: {individual_error}")
+                    article.sentiment_score = 0.0
+                    article.data_quality_score = 0.1
 
 # Convenience functions
 def collect_sp500_sample(config_path: Optional[str] = None) -> Dict[str, StockData]:
