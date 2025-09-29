@@ -210,49 +210,48 @@ class SentimentCalculator:
     def calculate_news_sentiment(self, symbol: str, db: DatabaseManager, days_back: int = 30) -> Tuple[Optional[float], float, int]:
         """
         Calculate and score news sentiment from stored articles
-        
+
         Args:
             symbol: Stock symbol
             db: Database manager instance
             days_back: Number of days to look back for news
-            
+
         Returns:
             (news_sentiment, news_sentiment_score, article_count): Raw sentiment, score, and count
         """
         try:
-            # Get recent news articles from database
+            # Get recent news articles WITH EXISTING SENTIMENT SCORES from database
             cutoff_date = datetime.now() - timedelta(days=days_back)
-            
+
             cursor = db.connection.cursor()
             cursor.execute('''
-                SELECT title, summary, publish_date
-                FROM news_articles 
-                WHERE symbol = ? AND publish_date >= ?
+                SELECT sentiment_score, data_quality_score
+                FROM news_articles
+                WHERE symbol = ?
+                AND publish_date >= ?
+                AND sentiment_score IS NOT NULL
                 ORDER BY publish_date DESC
             ''', (symbol, cutoff_date))
-            
+
             articles = cursor.fetchall()
             cursor.close()
-            
+
             if not articles:
-                logger.warning(f"No recent news articles found for {symbol}")
+                logger.warning(f"No recent news articles with sentiment found for {symbol}")
                 return None, 0.0, 0
-            
-            # Analyze sentiment for each article
+
+            # Use EXISTING sentiment scores (from Claude API batch processing)
             sentiments = []
             reliabilities = []
-            
-            for title, summary, publish_date in articles:
-                # Combine title and summary for analysis
-                text = f"{title}. {summary or ''}"
-                sentiment, reliability = self.analyze_text_sentiment(text)
-                
-                if reliability > 0.5:  # Only include reliable predictions
-                    sentiments.append(sentiment)
-                    reliabilities.append(reliability)
-            
+
+            for sentiment_score, quality_score in articles:
+                # Use the pre-calculated sentiment scores
+                if sentiment_score is not None and quality_score is not None:
+                    sentiments.append(sentiment_score)
+                    reliabilities.append(quality_score)
+
             if not sentiments:
-                logger.warning(f"No reliable sentiment analysis for {symbol} news")
+                logger.warning(f"No valid sentiment scores for {symbol} news")
                 return None, 0.0, len(articles)
             
             # Calculate weighted average sentiment
@@ -294,43 +293,42 @@ class SentimentCalculator:
             (social_sentiment, social_sentiment_score, post_count): Raw sentiment, score, and count
         """
         try:
-            # Get recent Reddit posts from database
+            # Get recent Reddit posts WITH EXISTING SENTIMENT SCORES from database
             cutoff_date = datetime.now() - timedelta(days=days_back)
-            
+
             cursor = db.connection.cursor()
             cursor.execute('''
-                SELECT title, content, score, num_comments, created_utc
-                FROM reddit_posts 
-                WHERE symbol = ? AND created_utc >= ?
+                SELECT sentiment_score, data_quality_score, score, num_comments
+                FROM reddit_posts
+                WHERE symbol = ?
+                AND created_utc >= ?
+                AND sentiment_score IS NOT NULL
                 ORDER BY created_utc DESC
             ''', (symbol, cutoff_date))
-            
+
             posts = cursor.fetchall()
             cursor.close()
-            
+
             if not posts:
-                logger.warning(f"No recent Reddit posts found for {symbol}")
+                logger.warning(f"No recent Reddit posts with sentiment found for {symbol}")
                 return None, 0.0, 0
-            
-            # Analyze sentiment for each post
+
+            # Use EXISTING sentiment scores (from Claude API batch processing)
             sentiments = []
             weights = []
-            
-            for title, content, score, num_comments, created_utc in posts:
-                # Combine title and content for analysis
-                text = f"{title}. {content or ''}"
-                sentiment, reliability = self.analyze_text_sentiment(text)
-                
-                if reliability > 0.5:  # Only include reliable predictions
-                    # Weight by post engagement (score + comments)
-                    engagement = max(1, (score or 0) + (num_comments or 0))
-                    post_weight = reliability * np.log(1 + engagement)
-                    
-                    sentiments.append(sentiment)
+
+            for sentiment_score, quality_score, reddit_score, num_comments in posts:
+                if sentiment_score is not None and quality_score is not None:
+                    # Use the pre-calculated sentiment scores
+                    sentiments.append(sentiment_score)
+
+                    # Weight by post engagement (score + comments) and quality
+                    engagement = max(1, (reddit_score or 0) + (num_comments or 0))
+                    post_weight = quality_score * np.log(1 + engagement)
                     weights.append(post_weight)
-            
+
             if not sentiments:
-                logger.warning(f"No reliable sentiment analysis for {symbol} social posts")
+                logger.warning(f"No valid sentiment scores for {symbol} social posts")
                 return None, 0.0, len(posts)
             
             # Calculate weighted average sentiment
@@ -376,34 +374,29 @@ class SentimentCalculator:
             
             cursor = db.connection.cursor()
             
-            # Recent news sentiment
+            # Recent news sentiment (use existing sentiment scores)
             cursor.execute('''
-                SELECT title, summary FROM news_articles 
-                WHERE symbol = ? AND publish_date >= ?
+                SELECT sentiment_score FROM news_articles
+                WHERE symbol = ? AND publish_date >= ? AND sentiment_score IS NOT NULL
             ''', (symbol, recent_cutoff))
             recent_news = cursor.fetchall()
-            
-            # Older news sentiment
+
+            # Older news sentiment (use existing sentiment scores)
             cursor.execute('''
-                SELECT title, summary FROM news_articles 
-                WHERE symbol = ? AND publish_date >= ? AND publish_date < ?
+                SELECT sentiment_score FROM news_articles
+                WHERE symbol = ? AND publish_date >= ? AND publish_date < ? AND sentiment_score IS NOT NULL
             ''', (symbol, older_cutoff, recent_cutoff))
             older_news = cursor.fetchall()
             
             cursor.close()
             
-            # Calculate average sentiment for each period
-            def get_period_sentiment(articles):
-                if not articles:
+            # Calculate average sentiment for each period using EXISTING scores
+            def get_period_sentiment(sentiment_scores):
+                if not sentiment_scores:
                     return None
-                sentiments = []
-                for title, summary in articles:
-                    text = f"{title}. {summary or ''}"
-                    sentiment, reliability = self.analyze_text_sentiment(text)
-                    if reliability > 0.5:
-                        sentiments.append(sentiment)
-                return np.mean(sentiments) if sentiments else None
-            
+                scores = [score[0] for score in sentiment_scores if score[0] is not None]
+                return np.mean(scores) if scores else None
+
             recent_sentiment = get_period_sentiment(recent_news)
             older_sentiment = get_period_sentiment(older_news)
             

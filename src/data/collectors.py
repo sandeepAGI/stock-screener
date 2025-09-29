@@ -489,15 +489,13 @@ class DataCollectionOrchestrator:
                             publisher=news_item.get('publisher', ''),
                             publish_date=publish_date,
                             url=news_item.get('link', ''),
-                            sentiment_score=0.0,  # Will be calculated in bulk below
-                            data_quality_score=0.8  # Will be updated with sentiment quality
+                            sentiment_score=None,  # ← Will be calculated later via bulk processing
+                            data_quality_score=0.8  # Base quality for news articles
                         )
                         news_articles.append(article)
 
-                    # ✅ CRITICAL FIX: Calculate sentiment scores for all articles
-                    if news_articles:
-                        self._calculate_bulk_sentiment_for_articles(news_articles)
-                    
+                    # ✅ FIXED: Don't calculate sentiment here - save for bulk processing
+                    # Just store the raw articles for later sentiment analysis
                     if news_articles:
                         self.db_manager.insert_news_articles(news_articles)
                         results[symbol] = True
@@ -543,11 +541,10 @@ class DataCollectionOrchestrator:
                     reddit_post_objects = []
                     
                     for post in reddit_posts:
-                        # Calculate sentiment score using SentimentAnalyzer
-                        post_text = f"{post.get('title', '')} {post.get('text', '')}"
-                        sentiment_result = self.sentiment_analyzer.analyze_text(post_text)
+                        # ✅ FIXED: Don't calculate sentiment here - save for bulk processing
+                        # Just collect the raw data for later sentiment analysis
 
-                        # Calculate data quality based on engagement and sentiment reliability
+                        # Calculate data quality based on engagement only
                         base_quality = 0.7  # Base quality for Reddit data
                         engagement_score = max(1, post.get('score', 0) + post.get('num_comments', 0))
                         engagement_quality = min(1.0, engagement_score / 50)  # Scale engagement to 0-1
@@ -565,7 +562,7 @@ class DataCollectionOrchestrator:
                             num_comments=post.get('num_comments', 0),
                             created_utc=datetime.fromtimestamp(post.get('created_utc', 0)),
                             url=post.get('url', ''),
-                            sentiment_score=sentiment_result.sentiment_score,
+                            sentiment_score=None,  # ← Will be calculated later via bulk processing
                             data_quality_score=final_quality
                         )
                         reddit_post_objects.append(reddit_post)

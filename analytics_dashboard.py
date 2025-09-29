@@ -1045,566 +1045,675 @@ def run_data_refresh(data_types: List[str], symbols: Optional[List[str]] = None,
         return False, f"Refresh failed: {str(e)}"
 
 def show_data_management():
-    """Display the data management tab"""
-    st.header("🗄️ Data Management & Quality Control")
+    """Display the reorganized 3-step data workflow interface"""
+    st.header("🗄️ Data Management - 3-Step Workflow")
 
-    # Data Source Status Section
-    st.subheader("📡 Data Source Status")
+    st.info("""
+    **🎯 Streamlined Process:** Collect Data → Process Sentiment → Calculate Rankings
 
-    # Get status
-    with st.spinner("Checking data source status..."):
-        status_data = get_data_source_status()
-
-    if status_data:
-        # Display status in columns
-        col1, col2, col3, col4, col5 = st.columns(5)
-
-        status_items = list(status_data.items())
-        for i, (source, data) in enumerate(status_items):
-            col = [col1, col2, col3, col4, col5][i % 5]
-            with col:
-                # Use the pre-calculated status from the function
-                status_icon = data['status']
-                count = data['count']
-                days_old = data['days_old']
-                last_update = data['last_update']
-
-                # Format display text
-                if days_old == 0:
-                    status_text = "Today"
-                elif days_old == 1:
-                    status_text = "1 day ago"
-                elif days_old < 999:
-                    status_text = f"{days_old} days ago"
-                else:
-                    status_text = "Never"
-
-                st.metric(
-                    label=f"{status_icon.split()[0]} {source}",
-                    value=f"{count:,} records",
-                    delta=status_text,
-                    help=f"Last updated: {last_update}"
-                )
-
-    # Data Refresh Workflow
-    st.subheader("🔄 Data Refresh Workflow")
-
-    st.markdown("""
-    **Complete refresh process in 3 steps:**
-    1. 🚀 **Quick Refresh** - Update core data (fundamentals + prices)
-    2. 📰 **Manual Refresh** - Add news and sentiment data
-    3. 🔄 **Refresh Metrics** - Recalculate composite scores
+    Each step serves a specific purpose and should be completed in order for best results.
     """)
 
-    # Step 1: Quick Refresh
-    st.markdown("### Step 1: 🚀 Quick Data Refresh")
+    # Get current data status
+    from src.data.database import DatabaseManager
+    db = DatabaseManager()
+    data_status = {
+        "stocks_count": 0, "fundamentals_count": 0, "news_count": 0, "reddit_count": 0,
+        "news_no_sentiment": 0, "reddit_no_sentiment": 0, "news_with_sentiment": 0, "reddit_with_sentiment": 0
+    }
 
-    col1, col2 = st.columns([2, 1])
+    if db.connect():
+        cursor = db.connection.cursor()
 
+        # Get basic counts
+        cursor.execute("SELECT COUNT(*) FROM stocks")
+        data_status["stocks_count"] = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COUNT(*) FROM fundamental_data")
+        data_status["fundamentals_count"] = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COUNT(*) FROM news_articles")
+        data_status["news_count"] = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COUNT(*) FROM reddit_posts")
+        data_status["reddit_count"] = cursor.fetchone()[0]
+
+        # Get sentiment status
+        cursor.execute("SELECT COUNT(*) FROM news_articles WHERE sentiment_score IS NULL OR sentiment_score = 0.0")
+        data_status["news_no_sentiment"] = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COUNT(*) FROM reddit_posts WHERE sentiment_score IS NULL OR sentiment_score = 0.0")
+        data_status["reddit_no_sentiment"] = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COUNT(*) FROM news_articles WHERE sentiment_score IS NOT NULL AND sentiment_score != 0.0")
+        data_status["news_with_sentiment"] = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COUNT(*) FROM reddit_posts WHERE sentiment_score IS NOT NULL AND sentiment_score != 0.0")
+        data_status["reddit_with_sentiment"] = cursor.fetchone()[0]
+
+        cursor.close()
+        db.close()
+
+    # === STEP 1: COLLECT RAW DATA ===
+    st.markdown("---")
+    st.markdown("## 📥 Step 1: Collect Raw Data")
+    st.markdown("*Gather latest market data WITHOUT calculating sentiment*")
+
+    # Show current data status
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
-        st.markdown("**Updates essential data for all stocks:**")
-        st.markdown("• 📊 Fundamental Data (P/E, market cap, revenue, etc.)")
-        st.markdown("• 💹 Price Data (historical prices and volume)")
-        st.markdown("• ⚡ Fast update for ~503 stocks")
-
+        st.metric("📊 Stocks Tracked", f"{data_status['stocks_count']:,}")
     with col2:
-        if st.button("🚀 Start Quick Refresh", type="primary", help="Refresh fundamentals and prices for all stocks - typically completes in 2-5 minutes"):
-            # Store in session state to persist results
-            if 'quick_refresh_results' not in st.session_state:
-                st.session_state.quick_refresh_results = None
+        st.metric("💰 Fundamentals", f"{data_status['fundamentals_count']:,}")
+    with col3:
+        st.metric("📰 News Articles", f"{data_status['news_count']:,}")
+    with col4:
+        st.metric("💭 Reddit Posts", f"{data_status['reddit_count']:,}")
 
-            data_types = ['fundamentals', 'prices']
-            progress_placeholder = st.empty()
-
-            try:
-                with st.spinner("Refreshing core data..."):
-                    success, results = run_data_refresh(data_types, None, progress_placeholder)
-                    st.session_state.quick_refresh_results = {
-                        'success': success,
-                        'results': results,
-                        'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                    }
-
-                if success:
-                    st.success("✅ Quick refresh completed!")
-                    st.info("▶️ **Next:** Run Step 2 for complete data update")
-                else:
-                    st.error(f"❌ Quick refresh failed: {results}")
-                    st.info("📊 Check the 'Refresh Results' section below for details")
-
-            except Exception as e:
-                # Store the failure in session state
-                st.session_state.quick_refresh_results = {
-                    'success': False,
-                    'results': f"Exception: {str(e)}",
-                    'error': str(e),
-                    'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                }
-                st.error(f"❌ Quick refresh failed with error: {e}")
-                st.info("📊 Check the 'Refresh Results' section below for error details")
-
-    # Step 2: Manual Refresh Options
-    st.markdown("### Step 2: 📰 Additional Data Refresh (Optional)")
-
+    # Data collection options
     col1, col2 = st.columns([3, 1])
 
     with col1:
-        st.markdown("**Select additional data types to refresh:**")
-
-        # Checkboxes for data types
-        refresh_news = st.checkbox("📰 News Data", help="Recent news headlines and sentiment analysis")
-        refresh_sentiment = st.checkbox("💭 Social Sentiment", help="Reddit posts and social media sentiment")
-
-        # Symbol selection
-        refresh_all_stocks = st.checkbox("All Stocks", value=True, help="Refresh all stocks or select specific ones")
-
-        if not refresh_all_stocks:
-            try:
-                conn = sqlite3.connect('data/stock_data.db')
-                symbol_query = "SELECT DISTINCT symbol FROM stocks ORDER BY symbol"
-                symbols_df = pd.read_sql_query(symbol_query, conn)
-                available_symbols = symbols_df['symbol'].tolist()
-                conn.close()
-
-                selected_symbols = st.multiselect(
-                    "Select specific stocks:",
-                    options=available_symbols,
-                    default=available_symbols[:10],
-                    help="Choose specific stocks to refresh"
-                )
-            except:
-                selected_symbols = ['AAPL', 'MSFT', 'GOOGL', 'TSLA', 'AMZN']
-                st.warning("Could not load symbols from database, using defaults")
-        else:
-            selected_symbols = None
+        st.markdown("**What gets collected:**")
+        st.markdown("• 📊 **Fundamentals:** P/E ratios, market cap, revenue, financial metrics")
+        st.markdown("• 💹 **Prices:** Historical price data and trading volumes")
+        st.markdown("• 📰 **News:** Headlines and summaries (sentiment_score = NULL)")
+        st.markdown("• 💭 **Reddit:** Posts and discussions (sentiment_score = NULL)")
+        st.markdown("")
+        st.markdown("⚠️ **Important:** Sentiment analysis happens in Step 2 via Claude API")
 
     with col2:
-        # Collect selected data types
-        selected_data_types = []
-        if refresh_news:
-            selected_data_types.append('news')
-        if refresh_sentiment:
-            selected_data_types.append('sentiment')
+        st.markdown("**Quick Actions:**")
 
-        if selected_data_types:
-            if st.button("📰 Start Manual Refresh", help="Refresh selected data types"):
-                if 'manual_refresh_results' not in st.session_state:
-                    st.session_state.manual_refresh_results = None
-
-                progress_placeholder = st.empty()
-
+        if st.button("🚀 Collect All Data", type="primary", help="Collect fundamentals, prices, news, and Reddit data"):
+            with st.spinner("Collecting all data types..."):
                 try:
-                    with st.spinner(f"Refreshing {', '.join(selected_data_types)}..."):
-                        success, results = run_data_refresh(selected_data_types, selected_symbols, progress_placeholder)
-                        st.session_state.manual_refresh_results = {
-                            'success': success,
-                            'results': results,
-                            'data_types': selected_data_types,
-                            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                        }
-
+                    data_types = ['fundamentals', 'prices', 'news', 'sentiment']
+                    success, results = run_data_refresh(data_types, None, None)
                     if success:
-                        st.success("✅ Manual refresh completed!")
-                        st.info("▶️ **Next:** Run Step 3 to recalculate metrics")
+                        st.success("✅ Data collection completed!")
+                        st.info("➡️ **Next:** Proceed to Step 2 for sentiment processing")
+                        st.rerun()
                     else:
-                        st.error(f"❌ Manual refresh failed: {results}")
-                        st.info("📊 Check the 'Refresh Results' section below for details")
-
+                        st.error(f"❌ Collection failed: {results}")
                 except Exception as e:
-                    # Store the failure in session state
-                    st.session_state.manual_refresh_results = {
-                        'success': False,
-                        'results': f"Exception: {str(e)}",
-                        'data_types': selected_data_types,
-                        'error': str(e),
-                        'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                    }
-                    st.error(f"❌ Manual refresh failed with error: {e}")
-                    st.info("📊 Check the 'Refresh Results' section below for error details")
+                    st.error(f"❌ Error: {str(e)}")
+
+        if st.button("⚡ Quick Update", help="Update fundamentals and prices only"):
+            with st.spinner("Quick update in progress..."):
+                try:
+                    data_types = ['fundamentals', 'prices']
+                    success, results = run_data_refresh(data_types, None, None)
+                    if success:
+                        st.success("✅ Quick update completed!")
+                        st.rerun()
+                    else:
+                        st.error(f"❌ Update failed: {results}")
+                except Exception as e:
+                    st.error(f"❌ Error: {str(e)}")
+
+    # Advanced options
+    with st.expander("🔧 Advanced Collection Options"):
+        st.markdown("**Select specific data types:**")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            collect_fundamentals = st.checkbox("📊 Fundamentals", value=True)
+            collect_prices = st.checkbox("💹 Prices", value=True)
+        with col2:
+            collect_news = st.checkbox("📰 News Articles", value=False)
+            collect_reddit = st.checkbox("💭 Reddit Posts", value=False)
+
+        selected_symbols = st.multiselect(
+            "🎯 Specific Symbols (optional):",
+            options=['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'META', 'TSLA'],
+            help="Leave empty to update all stocks"
+        )
+
+        if st.button("🔄 Custom Collection"):
+            data_types = []
+            if collect_fundamentals: data_types.append('fundamentals')
+            if collect_prices: data_types.append('prices')
+            if collect_news: data_types.append('news')
+            if collect_reddit: data_types.append('sentiment')
+
+            if data_types:
+                with st.spinner("Running custom collection..."):
+                    try:
+                        symbols = selected_symbols if selected_symbols else None
+                        success, results = run_data_refresh(data_types, symbols, None)
+                        if success:
+                            st.success("✅ Custom collection completed!")
+                            st.rerun()
+                        else:
+                            st.error(f"❌ Collection failed: {results}")
+                    except Exception as e:
+                        st.error(f"❌ Error: {str(e)}")
+            else:
+                st.warning("⚠️ Please select at least one data type")
+
+    # === STEP 2: PROCESS SENTIMENT ===
+    st.markdown("---")
+    st.markdown("## 🤖 Step 2: Process Sentiment via Claude API")
+    st.markdown("*High-quality financial sentiment analysis using bulk processing*")
+
+    # Show sentiment status
+    total_unprocessed = data_status['news_no_sentiment'] + data_status['reddit_no_sentiment']
+    total_processed = data_status['news_with_sentiment'] + data_status['reddit_with_sentiment']
+
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("📰 News Need Sentiment", f"{data_status['news_no_sentiment']:,}")
+    with col2:
+        st.metric("💭 Reddit Need Sentiment", f"{data_status['reddit_no_sentiment']:,}")
+    with col3:
+        st.metric("🔄 Total Unprocessed", f"{total_unprocessed:,}")
+    with col4:
+        st.metric("✅ Already Processed", f"{total_processed:,}")
+
+    # Initialize bulk processor
+    @st.cache_resource
+    def get_bulk_processor():
+        """Initialize the unified bulk processor"""
+        try:
+            from src.data.unified_bulk_processor import UnifiedBulkProcessor
+            import os
+            api_key = os.getenv('NEWS_API_KEY') or os.getenv('ANTHROPIC_API_KEY')
+            if not api_key:
+                return None
+            return UnifiedBulkProcessor(api_key)
+        except Exception as e:
+            st.error(f"Could not initialize bulk processor: {e}")
+            return None
+
+    bulk_processor = get_bulk_processor()
+
+    if not bulk_processor:
+        st.error("❌ Bulk sentiment processor not available")
+        st.info("🔑 **API Key Required**: Set NEWS_API_KEY or ANTHROPIC_API_KEY in your .env file")
+        st.info("💡 **Why needed**: Claude API provides superior financial sentiment analysis")
+
+    else:
+        # Check for active batches
+        active_batches = []
+        if db.connect():
+            active_batches = db.get_active_batch_ids()
+            db.close()
+
+        if active_batches:
+            st.markdown("### 📊 Active Batch Monitoring")
+
+            selected_batch = st.selectbox(
+                "Select batch to monitor:",
+                active_batches,
+                format_func=lambda x: f"Batch: {x[:20]}..."
+            )
+
+            if selected_batch:
+                col1, col2 = st.columns([2, 1])
+
+                with col1:
+                    # Check batch status
+                    batch_status = bulk_processor.check_batch_status(selected_batch)
+                    if batch_status and batch_status['success']:
+                        st.info(f"**Status:** {batch_status['status']}")
+                        st.info(f"**Progress:** {batch_status['completed_count']}/{batch_status['submitted_count']} items processed")
+
+                        if batch_status['status'] == 'ended':
+                            st.success("🎉 Batch completed successfully!")
+                    else:
+                        st.warning("⚠️ Could not check batch status")
+
+                with col2:
+                    if batch_status and batch_status.get('status') == 'ended':
+                        if st.button("📥 Process Results", type="primary"):
+                            with st.spinner("Retrieving and processing batch results..."):
+                                try:
+                                    success = bulk_processor.retrieve_and_process_batch_results(selected_batch)
+                                    if success:
+                                        st.success("✅ Results processed successfully!")
+                                        st.info("➡️ **Next:** Proceed to Step 3 for final calculations")
+                                        st.rerun()
+                                    else:
+                                        st.error("❌ Failed to process results")
+                                except Exception as e:
+                                    st.error(f"❌ Error: {str(e)}")
+
+        elif total_unprocessed > 0:
+            st.markdown("### 🚀 Submit New Batch")
+
+            col1, col2 = st.columns([2, 1])
+
+            with col1:
+                st.markdown("**Claude API Batch Processing:**")
+                st.markdown(f"• 📊 **Total Items:** {total_unprocessed:,} items ready for processing")
+                st.markdown("• 💰 **Cost:** 50% savings vs individual API calls")
+                st.markdown("• ⏱️ **Time:** Typically completes in <1 hour")
+                st.markdown("• 🧠 **Quality:** Superior financial context understanding")
+
+            with col2:
+                if st.button("🚀 Submit Batch", type="primary", help=f"Submit {total_unprocessed:,} items for sentiment analysis"):
+                    with st.spinner("Preparing and submitting batch..."):
+                        try:
+                            # Get unprocessed items
+                            if db.connect():
+                                unprocessed_items = db.get_unprocessed_items_for_batch()
+                                db.close()
+
+                                if unprocessed_items:
+                                    # Prepare data for submission
+                                    news_articles = []
+                                    reddit_posts = []
+
+                                    for item in unprocessed_items:
+                                        if item['content_type'] == 'news':
+                                            news_articles.append((
+                                                item['symbol'],
+                                                item['title'],
+                                                item['content'],
+                                                {'record_id': item['record_id']}
+                                            ))
+                                        elif item['content_type'] == 'reddit':
+                                            reddit_posts.append((
+                                                item['symbol'],
+                                                item['title'],
+                                                item['content'],
+                                                {'record_id': item['record_id']}
+                                            ))
+
+                                    # Submit batch
+                                    submission = bulk_processor.bulk_processor.submit_batch_for_processing(
+                                        news_articles=news_articles if news_articles else None,
+                                        reddit_posts=reddit_posts if reddit_posts else None
+                                    )
+
+                                    if submission:
+                                        batch_id, requests = submission
+                                        # Store batch mapping
+                                        bulk_processor._store_batch_mapping(batch_id, requests)
+                                        st.success(f"✅ Batch submitted successfully!")
+                                        st.info(f"📊 Processing {len(requests)} items")
+                                        st.info(f"🆔 Batch ID: {batch_id[:20]}...")
+                                        st.info("⏱️ Expected completion: <1 hour")
+                                        st.info("🔄 Refresh page to monitor progress")
+                                        st.rerun()
+                                    else:
+                                        st.error("❌ Failed to submit batch")
+                                else:
+                                    st.error("❌ No unprocessed items found")
+                            else:
+                                st.error("❌ Could not connect to database")
+                        except Exception as e:
+                            st.error(f"❌ Error submitting batch: {str(e)}")
+
         else:
-            st.info("👆 Select data types above")
+            st.success("✅ All items have sentiment scores! No processing needed.")
 
-    # Step 3: Refresh Metrics (moved out of quick actions)
-    st.markdown("### Step 3: 🔄 Recalculate Composite Scores")
+    # === BATCH MONITORING SECTION ===
+    if active_batches or total_unprocessed == 0:
+        st.markdown("---")
+        st.markdown("## 📊 Batch Processing Status")
+        st.markdown("*Monitor your Claude API batch progress in real-time*")
 
-    col1, col2 = st.columns([3, 1])
+        if active_batches:
+            st.info("🔄 **Active Batch Processing** - Monitor progress below")
+
+            # Batch status overview
+            col1, col2, col3 = st.columns(3)
+
+            # Get detailed status for all active batches
+            batch_statuses = {}
+            for batch_id in active_batches:
+                status = bulk_processor.check_batch_status(batch_id)
+                if status and status['success']:
+                    batch_statuses[batch_id] = status
+
+            # Calculate overall progress
+            total_submitted = sum(s.get('submitted_count', 0) for s in batch_statuses.values())
+            total_completed = sum(s.get('completed_count', 0) for s in batch_statuses.values())
+            overall_progress = (total_completed / total_submitted * 100) if total_submitted > 0 else 0
+
+            with col1:
+                st.metric("📦 Active Batches", len(active_batches))
+            with col2:
+                st.metric("📊 Total Items", f"{total_submitted:,}")
+            with col3:
+                st.metric("✅ Progress", f"{overall_progress:.1f}%")
+
+            # Individual batch details
+            st.markdown("### 📋 Batch Details")
+
+            for batch_id, status_info in batch_statuses.items():
+                with st.expander(f"🔍 Batch {batch_id[:20]}... - {status_info.get('status', 'unknown').title()}", expanded=True):
+                    col1, col2, col3, col4 = st.columns(4)
+
+                    with col1:
+                        st.metric("Status", status_info.get('status', 'unknown').title())
+                    with col2:
+                        submitted = status_info.get('submitted_count', 0)
+                        st.metric("Submitted", f"{submitted:,}")
+                    with col3:
+                        completed = status_info.get('completed_count', 0)
+                        st.metric("Completed", f"{completed:,}")
+                    with col4:
+                        progress = (completed / submitted * 100) if submitted > 0 else 0
+                        st.metric("Progress", f"{progress:.1f}%")
+
+                    # Progress bar
+                    st.progress(progress / 100.0)
+
+                    # Status-specific actions
+                    if status_info.get('status') == 'ended':
+                        st.success("🎉 **Batch Complete!** Ready to process results.")
+
+                        col1, col2 = st.columns([2, 1])
+                        with col1:
+                            st.info("📥 Click 'Process Results' to apply sentiment scores to your database")
+                        with col2:
+                            if st.button("📥 Process Results", key=f"process_{batch_id[:8]}", type="primary"):
+                                with st.spinner("Processing batch results..."):
+                                    try:
+                                        success = bulk_processor.retrieve_and_process_batch_results(batch_id)
+                                        if success:
+                                            st.success("✅ Results processed successfully!")
+                                            st.info("➡️ **Next:** Proceed to Step 3 for final calculations")
+                                            st.rerun()
+                                        else:
+                                            st.error("❌ Failed to process results")
+                                    except Exception as e:
+                                        st.error(f"❌ Error: {str(e)}")
+
+                    elif status_info.get('status') == 'in_progress':
+                        st.info("⏳ Processing in progress... Claude is analyzing your data")
+                        st.markdown("**Estimated completion:** <1 hour from submission")
+
+                        # Auto-refresh option
+                        if st.button("🔄 Refresh Status", key=f"refresh_{batch_id[:8]}"):
+                            st.rerun()
+
+                    elif status_info.get('status') in ['failed', 'expired', 'cancelled']:
+                        st.error(f"❌ **Batch {status_info.get('status')}**")
+                        st.info("💡 You may need to resubmit your data for processing")
+
+                    else:
+                        st.warning(f"⚠️ **Unknown status:** {status_info.get('status')}")
+
+            # Auto-refresh controls
+            st.markdown("### 🔄 Auto-Refresh")
+            col1, col2 = st.columns([2, 1])
+
+            with col1:
+                st.info("💡 **Tip:** This page will auto-update when you refresh. Batches typically complete within 1 hour.")
+
+            with col2:
+                if st.button("🔄 Refresh All Status", type="secondary"):
+                    st.rerun()
+
+        elif total_unprocessed == 0:
+            st.success("✅ **All sentiment processing complete!** No active batches.")
+
+            # Show summary of last processing
+            if db.connect():
+                cursor = db.connection.cursor()
+
+                # Get recent batch info
+                cursor.execute("""
+                    SELECT COUNT(DISTINCT batch_id) as batch_count,
+                           COUNT(*) as total_items,
+                           MAX(created_at) as last_processed
+                    FROM batch_mapping
+                    WHERE created_at >= datetime('now', '-7 days')
+                """)
+
+                recent_stats = cursor.fetchone()
+                cursor.close()
+                db.close()
+
+                if recent_stats and recent_stats[0] > 0:
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("Recent Batches", f"{recent_stats[0]}")
+                    with col2:
+                        st.metric("Items Processed", f"{recent_stats[1]:,}")
+                    with col3:
+                        st.metric("Last Processing", recent_stats[2][:10] if recent_stats[2] else "Unknown")
+
+    # === STEP 3: CALCULATE FINAL RANKINGS ===
+    st.markdown("---")
+    st.markdown("## 📊 Step 3: Calculate Final Rankings")
+    st.markdown("*Generate composite scores using all collected data*")
+
+    # Check for completed batches needing processing
+    completed_batches_ready = False
+    if active_batches:
+        for batch_id in active_batches:
+            status = bulk_processor.check_batch_status(batch_id)
+            if status and status.get('status') == 'ended':
+                completed_batches_ready = True
+                break
+
+    # Dynamic status messaging
+    if completed_batches_ready:
+        st.success("🎉 **Batch Processing Complete!** Process your results above before proceeding to Step 3.")
+        st.info("⬆️ **Action Required:** Scroll up to the 'Batch Processing Status' section and click 'Process Results'")
+    elif total_unprocessed > 0 and not active_batches:
+        st.warning("⚠️ **Sentiment processing incomplete.** Complete Step 2 before running final calculations.")
+        st.info("💡 Some stocks may receive preliminary scores based on available data.")
+    elif active_batches:
+        # Check if any are still processing
+        in_progress_count = 0
+        for batch_id in active_batches:
+            status = bulk_processor.check_batch_status(batch_id)
+            if status and status.get('status') == 'in_progress':
+                in_progress_count += 1
+
+        if in_progress_count > 0:
+            st.info(f"⏳ **Sentiment processing in progress** ({in_progress_count} batch{'es' if in_progress_count > 1 else ''} active). Monitor progress above.")
+        else:
+            st.info("⏳ **Checking batch status...** Monitor progress in the section above.")
+    else:
+        st.success("✅ **Ready for final calculations.** All sentiment data is up-to-date.")
+
+    # Information section
+    st.markdown("**📋 What gets calculated:**")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.markdown("• 📊 **Fundamental** (40%): P/E, P/B, PEG")
+        st.markdown("• 🏆 **Quality** (25%): ROE, margins")
+    with col2:
+        st.markdown("• 📈 **Growth** (20%): Revenue, earnings")
+        st.markdown("• 💭 **Sentiment** (15%): News + Reddit")
+    with col3:
+        st.markdown("• 🎯 **Composite Rankings**")
+        st.markdown("• 📊 **Final weighted scores**")
+
+    st.markdown("---")
+    st.markdown("### 🎬 Choose Calculation Method:")
+
+    # Organize buttons in a 2x2 grid for better display
+    col1, col2 = st.columns(2)
 
     with col1:
-        st.markdown("**Final step - recalculate all composite scores:**")
-        st.markdown("• 📊 Processes all fundamental, quality, growth, and sentiment data")
-        st.markdown("• 🔢 Generates composite scores using 40/25/20/15 weighting")
-        st.markdown("• ⏱️ Takes 3-5 minutes for all stocks")
-        st.warning("⚠️ **Important:** Run this after any data refresh to update rankings")
-
-    with col2:
-        if st.button("🔄 Recalculate Metrics", type="secondary", help="Recalculate composite scores - REQUIRED after data refresh"):
-            if 'metrics_refresh_results' not in st.session_state:
-                st.session_state.metrics_refresh_results = None
-
-            with st.spinner("Recalculating all metrics..."):
+        # Test calculation with a few stocks first
+        if st.button("🧪 Test Calculation", help="Test with a few stocks first (AAPL, MSFT, GOOGL)", use_container_width=True):
+            with st.spinner("Testing calculation with sample stocks..."):
                 try:
-                    # Import and call the analytics update utility
                     from utilities.update_analytics import update_analytics
-                    import sqlite3
                     import logging
 
-                    # Create a proper logger for the utility
+                    logger = logging.getLogger('test_calc')
+                    logger.setLevel(logging.INFO)
+
+                    # Test with just 3 stocks
+                    success = update_analytics(logger=logger, symbols=['AAPL', 'MSFT', 'GOOGL'], force_recalculate=True)
+
+                    if success:
+                        st.success("✅ Test calculation successful!")
+                        st.info("💡 Now try the full calculation below")
+                    else:
+                        st.error("❌ Test calculation failed - there may be data issues")
+
+                except Exception as e:
+                    st.error(f"❌ Test failed: {str(e)}")
+
+        with col2:
+            # Calculate All button
+            if st.button("📊 Calculate Rankings", type="primary", help="Calculate rankings for stocks needing updates", use_container_width=True):
+                with st.spinner("Calculating composite scores..."):
+                    try:
+                        # Import and call the analytics update utility
+                        from utilities.update_analytics import update_analytics
+                        import logging
+                        import io
+
+                        # Create a logger for the utility with stream capture
+                        logger = logging.getLogger('dashboard_metrics')
+                        logger.setLevel(logging.INFO)
+
+                        # Capture logging output
+                        log_capture = io.StringIO()
+                        handler = logging.StreamHandler(log_capture)
+                        handler.setLevel(logging.INFO)
+                        logger.addHandler(handler)
+
+                        # Run the calculation
+                        success = update_analytics(logger=logger)
+
+                        # Get captured logs
+                        log_output = log_capture.getvalue()
+
+                        # Count successful vs failed regardless of return value
+                        success_count = log_output.count("✅") + log_output.count("Analytics updated successfully")
+                        failed_count = log_output.count("❌") + log_output.count("calculation failed")
+
+                        if success:
+                            st.success("✅ Rankings calculated successfully!")
+                            st.info("🎉 **Complete!** Check the main dashboard for updated rankings")
+                        elif success_count > 0:
+                            # Function returned False but still processed stocks successfully
+                            st.warning("⚠️ Calculation completed with some limitations")
+                            st.success(f"✅ Successfully processed {success_count} stocks")
+                            if failed_count > 0:
+                                st.info(f"ℹ️ Skipped {failed_count} stocks due to data quality issues")
+                            st.info("📊 **Result:** Rankings updated for stocks with sufficient data quality")
+                        else:
+                            st.error("❌ Calculation failed - check logs for details")
+
+                        if log_output and (not success or failed_count > 0):
+                            with st.expander("📝 Show Processing Details"):
+                                st.text(log_output[-2000:])  # Show last 2000 chars
+
+                    except Exception as e:
+                        st.error(f"❌ Error during calculation: {str(e)}")
+                        import traceback
+                        with st.expander("📝 Show Full Error"):
+                            st.text(traceback.format_exc())
+
+    # Add spacing between rows
+    st.markdown("")
+
+    # Second row of buttons
+    col_a, col_b = st.columns(2)
+
+    with col_a:
+        if st.button("🎯 Quality Stocks Only", help="Process only stocks with good data quality", type="secondary", use_container_width=True):
+            with st.spinner("Processing stocks with good data quality..."):
+                try:
+                    from utilities.update_analytics import update_analytics
+                    import logging
+
+                    logger = logging.getLogger('quality_calc')
+                    logger.setLevel(logging.INFO)
+
+                    # Get stocks that already have calculated metrics (known good quality)
+                    db_temp = DatabaseManager()
+                    db_temp.connect()
+                    cursor = db_temp.connection.cursor()
+                    cursor.execute('SELECT DISTINCT symbol FROM calculated_metrics ORDER BY symbol')
+                    good_stocks = [row[0] for row in cursor.fetchall()]
+                    cursor.close()
+                    db_temp.close()
+
+                    if good_stocks:
+                        success = update_analytics(logger=logger, symbols=good_stocks[:50], force_recalculate=True)  # Limit to 50 for speed
+                        if success:
+                            st.success(f"✅ Updated {min(50, len(good_stocks))} high-quality stocks!")
+                        else:
+                            st.warning("⚠️ Some issues encountered but processing completed")
+                    else:
+                        st.info("ℹ️ No stocks with existing calculations found")
+
+                except Exception as e:
+                    st.error(f"❌ Error: {str(e)}")
+
+    with col_b:
+        if st.button("🔄 Force Recalculate All", type="secondary", help="Force recalculate ALL stocks regardless of data age", use_container_width=True):
+            with st.spinner("Force recalculating all composite scores..."):
+                try:
+                    # Import and call the analytics update utility with force flag
+                    from utilities.update_analytics import update_analytics
+                    import logging
+                    import io
+
+                    # Create a logger for the utility with stream capture
                     logger = logging.getLogger('dashboard_metrics')
                     logger.setLevel(logging.INFO)
 
-                    # Ensure it has a handler (for terminal output)
-                    if not logger.handlers:
-                        handler = logging.StreamHandler()
-                        formatter = logging.Formatter('%(message)s')
-                        handler.setFormatter(formatter)
-                        logger.addHandler(handler)
+                    # Capture logging output
+                    log_capture = io.StringIO()
+                    handler = logging.StreamHandler(log_capture)
+                    handler.setLevel(logging.INFO)
+                    logger.addHandler(handler)
 
-                    # Get the count of stocks before refresh for comparison
-                    conn = sqlite3.connect('data/stock_data.db')
-                    before_count = pd.read_sql_query(
-                        "SELECT COUNT(*) as count FROM calculated_metrics", conn
-                    ).iloc[0]['count']
-                    conn.close()
+                    # Run the calculation with force_recalculate=True
+                    success = update_analytics(logger=logger, force_recalculate=True)
 
-                    # Call analytics update with proper logger - this will show detailed output in terminal
-                    logger.info("🔄 Starting update_analytics call from Streamlit dashboard...")
-                    success = update_analytics(symbols=None, force_recalculate=True, batch_size=50, logger=logger)
-                    logger.info(f"📊 update_analytics returned: {success}")
+                    # Get captured logs
+                    log_output = log_capture.getvalue()
 
-                    # Capture additional debugging info
-                    if not success:
-                        logger.error("❌ update_analytics returned False - detailed error investigation needed")
-                        logger.error("🔍 This indicates success rate was below 70% - many stock calculations failed")
-                        logger.error("💡 Common causes: missing data, API issues, or quality thresholds too strict")
+                    # Count successful vs failed regardless of return value
+                    success_count = log_output.count("✅") + log_output.count("Analytics updated successfully")
+                    failed_count = log_output.count("❌") + log_output.count("calculation failed")
+
+                    if success:
+                        st.success("✅ Rankings calculated successfully!")
+                        st.info("🎉 **Complete!** Check the main dashboard for updated rankings")
+                    elif success_count > 0:
+                        # Function returned False but still processed stocks successfully
+                        st.warning("⚠️ Calculation completed with some limitations")
+                        st.success(f"✅ Successfully processed {success_count} stocks")
+                        if failed_count > 0:
+                            st.info(f"ℹ️ Skipped {failed_count} stocks due to data quality issues")
+                        st.info("📊 **Result:** Rankings updated for stocks with sufficient data quality")
                     else:
-                        logger.info("✅ update_analytics returned True - function reported success")
+                        st.error("❌ Calculation failed - check logs for details")
 
-                    # Get the count after refresh to see how many were updated
-                    conn = sqlite3.connect('data/stock_data.db')
-
-                    # Get total updated count
-                    after_count = pd.read_sql_query(
-                        "SELECT COUNT(*) as count FROM calculated_metrics", conn
-                    ).iloc[0]['count']
-
-                    # Get recent updates (within last 5 minutes) to identify what was processed
-                    recent_updates = pd.read_sql_query("""
-                        SELECT symbol FROM calculated_metrics
-                        WHERE created_at >= datetime('now', '-5 minutes')
-                        ORDER BY created_at DESC
-                    """, conn)
-
-                    # Get quality statistics for more insight
-                    quality_stats = pd.read_sql_query("""
-                        SELECT
-                            COUNT(*) as total_recent,
-                            COUNT(CASE WHEN composite_score >= 70 THEN 1 END) as high_quality,
-                            COUNT(CASE WHEN composite_score < 50 THEN 1 END) as low_quality,
-                            AVG(composite_score) as avg_score
-                        FROM calculated_metrics
-                        WHERE created_at >= datetime('now', '-5 minutes')
-                    """, conn)
-
-                    conn.close()
-
-                    # Create meaningful results based on database changes
-                    recent_symbols = recent_updates['symbol'].tolist() if not recent_updates.empty else []
-
-                    if recent_symbols:
-                        # We have recent updates - these were successful regardless of overall function success
-                        success_stocks = recent_symbols
-
-                        # Create informative warnings based on quality stats
-                        warnings = []
-                        if not quality_stats.empty:
-                            stats = quality_stats.iloc[0]
-                            total = stats['total_recent']
-                            high_qual = stats['high_quality']
-                            low_qual = stats['low_quality']
-                            avg_score = stats['avg_score']
-
-                            if total > 0:
-                                warnings.append(f"📊 Processed {total} stocks with average score {avg_score:.1f}")
-                                if high_qual > 0:
-                                    warnings.append(f"✅ {high_qual} stocks achieved high quality scores (≥70)")
-                                if low_qual > 0:
-                                    warnings.append(f"⚠️  {low_qual} stocks have quality concerns (<50)")
-
-                                # Add data quality insights
-                                if avg_score < 60:
-                                    warnings.append("⚠️  Overall data quality is below optimal - consider refreshing source data")
-
-                        # Handle partial success case - when we have updates but function returned False
-                        if not success:
-                            warnings.append("🔍 Update function reported low success rate (<70%)")
-                            warnings.append("💡 Some stocks calculated successfully despite overall failure status")
-                            # Estimate failed stocks based on success rate threshold
-                            total_attempted = len(recent_symbols) * (100 / 69)  # Reverse calculate if 69% failed
-                            estimated_failed = int(total_attempted - len(recent_symbols))
-                            failed_stocks = [f"Estimated {estimated_failed} stocks failed (see terminal for details)"]
-                        else:
-                            failed_stocks = []
-
-                    else:
-                        # No recent updates found
-                        if success:
-                            # Function reported success but no updates - likely no stocks needed updating
-                            success_stocks = []
-                            failed_stocks = []
-                            warnings = ["ℹ️  All analytics are up to date - no updates needed"]
-                        else:
-                            # Function failed - but check if this is due to low success rate vs complete failure
-                            success_stocks = []
-                            failed_stocks = []
-                            warnings = [
-                                "❌ Analytics update completed with issues",
-                                "🔍 Success rate was below 70% threshold",
-                                "📺 Check terminal output for detailed information",
-                                "💡 Some calculations may have succeeded despite overall failure status"
-                            ]
-
-                    # Override success status based on actual results
-                    # If we have recent updates, consider it a partial success even if function returned False
-                    display_success = success or len(recent_symbols) > 0
-
-                    # Store results in session state
-                    st.session_state.metrics_refresh_results = {
-                        'success': display_success,
-                        'original_function_success': success,  # Keep track of what the function actually returned
-                        'success_stocks': success_stocks,
-                        'failed_stocks': failed_stocks,
-                        'warnings': warnings,
-                        'total_processed': len(recent_symbols),
-                        'before_count': before_count,
-                        'after_count': after_count,
-                        'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                    }
-
-                    # Display immediate feedback using display_success logic
-                    total_processed = len(recent_symbols)
-                    if display_success:
-                        if total_processed == 0:
-                            st.info("ℹ️  All analytics are up to date - no updates needed")
-                        elif not success:  # Partial success case
-                            st.warning("⚠️ Metrics calculated with issues - success rate below 70%")
-                        elif len(failed_stocks) == 0:
-                            st.success("✅ All metrics recalculated successfully!")
-                        else:
-                            st.warning("⚠️ Metrics calculation completed with some issues")
-                    else:
-                        st.error("❌ Metrics calculation failed")
-
-                    # Provide guidance about detailed output
-                    st.info("📊 Check the 'Refresh Results' section below for summary")
-                    st.info("📺 For detailed processing logs, check your terminal/console output")
+                    if log_output and (not success or failed_count > 0):
+                        with st.expander("📝 Show Processing Details"):
+                            st.text(log_output[-2000:])  # Show last 2000 chars
 
                 except Exception as e:
-                    # Store the failure in session state too
-                    st.session_state.metrics_refresh_results = {
-                        'success': False,
-                        'error': str(e),
-                        'success_stocks': [],
-                        'failed_stocks': [],
-                        'warnings': [],
-                        'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                    }
+                    st.error(f"❌ Error during calculation: {str(e)}")
+                    import traceback
+                    with st.expander("📝 Show Full Error"):
+                        st.text(traceback.format_exc())
 
-                    st.error(f"❌ Failed to recalculate metrics: {e}")
-                    st.error("💡 Try running: python utilities/update_analytics.py")
-                    st.info("📊 Check the 'Refresh Results' section below for error details")
+    # Show completion status
+    if db.connect():
+        cursor = db.connection.cursor()
+        cursor.execute("SELECT COUNT(*) FROM calculated_metrics")
+        metrics_count = cursor.fetchone()[0]
+        cursor.close()
+        db.close()
 
-    # Persistent Refresh Results Section
-    st.markdown("---")
-    st.subheader("📊 Refresh Results & Status")
-
-    # Display Quick Refresh Results
-    if hasattr(st.session_state, 'quick_refresh_results') and st.session_state.quick_refresh_results:
-        results = st.session_state.quick_refresh_results
-        with st.expander(f"🚀 Quick Refresh Results - {results['timestamp']}", expanded=True):
-            if results['success']:
-                st.success("✅ Quick refresh completed successfully")
-                if results['results']:
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        if 'fundamentals' in results['results']:
-                            fund_result = results['results']['fundamentals']
-                            if isinstance(fund_result, dict):
-                                success_count = sum(1 for v in fund_result.values() if v)
-                                total_count = len(fund_result)
-                                st.write(f"📊 **Fundamentals**: {success_count}/{total_count} stocks updated")
-                    with col2:
-                        if 'prices' in results['results']:
-                            price_result = results['results']['prices']
-                            if isinstance(price_result, dict):
-                                success_count = sum(1 for v in price_result.values() if v)
-                                total_count = len(price_result)
-                                st.write(f"💹 **Prices**: {success_count}/{total_count} stocks updated")
-            else:
-                st.error("❌ Quick refresh failed")
-                st.write(f"Error: {results['results']}")
-
-                # Show error details if available
-                if 'error' in results:
-                    st.markdown("**🔍 Error Details:**")
-                    st.code(results['error'])
-                    st.markdown("**Suggested actions:**")
-                    st.markdown("1. Check internet connection")
-                    st.markdown("2. Verify Yahoo Finance API is accessible")
-                    st.markdown("3. Try again in a few minutes")
-                    st.markdown("4. Check system resources and restart if needed")
-
-    # Display Manual Refresh Results
-    if hasattr(st.session_state, 'manual_refresh_results') and st.session_state.manual_refresh_results:
-        results = st.session_state.manual_refresh_results
-        with st.expander(f"📰 Manual Refresh Results - {results['timestamp']}", expanded=True):
-            if results['success']:
-                st.success(f"✅ Manual refresh completed for: {', '.join(results['data_types'])}")
-                if results['results']:
-                    for data_type in results['data_types']:
-                        if data_type in results['results']:
-                            result = results['results'][data_type]
-                            if isinstance(result, dict):
-                                success_count = sum(1 for v in result.values() if v)
-                                total_count = len(result)
-                                icon = "📰" if data_type == "news" else "💭"
-                                st.write(f"{icon} **{data_type.title()}**: {success_count}/{total_count} stocks updated")
-            else:
-                st.error("❌ Manual refresh failed")
-                st.write(f"Error: {results['results']}")
-
-                # Show error details if available
-                if 'error' in results:
-                    st.markdown("**🔍 Error Details:**")
-                    st.code(results['error'])
-                    st.markdown("**Suggested actions:**")
-                    st.markdown("1. Check API credentials (.env file)")
-                    st.markdown("2. Verify Reddit API and News API access")
-                    st.markdown("3. Try refreshing fewer stocks")
-                    st.markdown("4. Check system resources and restart if needed")
-
-    # Display Metrics Refresh Results
-    if hasattr(st.session_state, 'metrics_refresh_results') and st.session_state.metrics_refresh_results:
-        results = st.session_state.metrics_refresh_results
-        with st.expander(f"🔄 Metrics Refresh Results - {results['timestamp']}", expanded=True):
-            if results['success']:
-                # Check if we actually processed any stocks
-                total_processed = results.get('total_processed', len(results['success_stocks']))
-
-                # Check if this was a partial success (original function failed but we have results)
-                original_success = results.get('original_function_success', True)
-
-                if total_processed == 0:
-                    st.info("ℹ️  All analytics are up to date - no updates needed")
-                    st.write("📊 Database contains calculated metrics for all stocks")
-                elif not original_success:
-                    # Partial success case - function failed but we have some results
-                    st.warning("⚠️ Partial success: Some metrics calculated despite low overall success rate")
-                    st.info(f"📊 {total_processed} stocks updated successfully")
-                    st.info("🔍 Success rate was below 70% threshold - check terminal for details")
-                elif len(results['failed_stocks']) == 0:
-                    st.success("✅ All metrics recalculated successfully!")
-                    st.info(f"📊 {total_processed} stocks updated with latest composite scores")
-                else:
-                    st.warning("⚠️ Metrics calculation completed with some issues")
-                    st.info(f"📊 {len(results['success_stocks'])} stocks updated successfully, {len(results['failed_stocks'])} had issues")
-
-                # Show database statistics
-                if 'before_count' in results and 'after_count' in results:
-                    st.markdown("**📊 Database Statistics:**")
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("Before", f"{results['before_count']} stocks")
-                    with col2:
-                        st.metric("After", f"{results['after_count']} stocks")
-                    with col3:
-                        net_change = results['after_count'] - results['before_count']
-                        st.metric("Net Change", f"+{net_change}" if net_change >= 0 else str(net_change))
-
-                # Show detailed results (NO NESTED EXPANDERS)
-                if results['success_stocks']:
-                    st.markdown(f"**✅ Recently Updated ({len(results['success_stocks'])} stocks):**")
-                    # Display in multiple columns for better layout
-                    cols = st.columns(6)
-                    for i, symbol in enumerate(results['success_stocks'][:30]):  # Limit display
-                        with cols[i % 6]:
-                            st.write(f"✅ {symbol}")
-                    if len(results['success_stocks']) > 30:
-                        st.write(f"... and {len(results['success_stocks']) - 30} more stocks")
-
-                if results['failed_stocks']:
-                    st.markdown(f"**❌ Failed Updates ({len(results['failed_stocks'])} stocks):**")
-                    if len(results['failed_stocks']) > 0 and isinstance(results['failed_stocks'][0], str) and "Unable to determine" in results['failed_stocks'][0]:
-                        st.text("❌ Analytics update reported failure")
-                        st.text("📺 Check terminal output for detailed error information")
-                        st.text("💡 Common issues: database locks, memory limits, missing dependencies")
-                    else:
-                        cols = st.columns(6)
-                        for i, symbol in enumerate(results['failed_stocks'][:30]):  # Limit display
-                            with cols[i % 6]:
-                                st.write(f"❌ {symbol}")
-                        if len(results['failed_stocks']) > 30:
-                            st.write(f"... and {len(results['failed_stocks']) - 30} more failed stocks")
-
-                # Show insights and warnings
-                if results['warnings']:
-                    st.markdown(f"**📊 Quality Insights & Warnings ({len(results['warnings'])} items):**")
-                    for warning in results['warnings']:
-                        if warning.strip():
-                            st.markdown(warning)
-
-                # Show success rate only if we have actual processing results
-                if total_processed > 0 and (results['success_stocks'] or results['failed_stocks']):
-                    success_count = len(results['success_stocks'])
-                    total_attempted = success_count + len(results['failed_stocks'])
-                    success_rate = (success_count / total_attempted * 100) if total_attempted > 0 else 0
-
-                    st.markdown("**📈 Processing Summary:**")
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("Success Rate", f"{success_rate:.1f}%")
-                    with col2:
-                        st.metric("Successful", success_count)
-                    with col3:
-                        st.metric("Failed", len(results['failed_stocks']))
-            else:
-                # Handle complete failure case
-                st.error("❌ Metrics calculation failed completely")
-
-                # Show error details if available
-                if 'error' in results:
-                    st.markdown("**🔍 Error Details:**")
-                    st.code(results['error'])
-
-                    # Provide troubleshooting suggestions
-                    st.markdown("**Possible causes:**")
-                    st.markdown("• Database connection issues")
-                    st.markdown("• Missing dependencies or imports")
-                    st.markdown("• Insufficient data for calculations")
-                    st.markdown("• Memory or processing limitations")
-
-                    st.markdown("**Suggested actions:**")
-                    st.markdown("1. Try running a data refresh first")
-                    st.markdown("2. Check database connectivity")
-                    st.markdown("3. Run command line version: `python utilities/update_analytics.py`")
-                    st.markdown("4. Check system resources and restart if needed")
-
-    # Clear Results Button
-    if (hasattr(st.session_state, 'quick_refresh_results') or
-        hasattr(st.session_state, 'manual_refresh_results') or
-        hasattr(st.session_state, 'metrics_refresh_results')):
-
-        if st.button("🗑️ Clear Results History", help="Clear all stored refresh results"):
-            if hasattr(st.session_state, 'quick_refresh_results'):
-                del st.session_state.quick_refresh_results
-            if hasattr(st.session_state, 'manual_refresh_results'):
-                del st.session_state.manual_refresh_results
-            if hasattr(st.session_state, 'metrics_refresh_results'):
-                del st.session_state.metrics_refresh_results
-            st.rerun()
-
+        if metrics_count > 0:
+            st.info(f"📊 **Last Update:** {metrics_count:,} stocks have calculated metrics")
+        else:
+            st.warning("⚠️ **No calculated metrics found** - run calculation to generate rankings")
 
     # Database Management
-    st.subheader("💾 Database Management")
+    st.markdown("---")
+    st.markdown("## 💾 Database Management")
 
     col1, col2 = st.columns(2)
 
@@ -1613,26 +1722,32 @@ def show_data_management():
         if st.button("📁 Create Backup", help="Create timestamped database backup"):
             with st.spinner("Creating backup..."):
                 try:
-                    # This would call the backup utility
-                    backup_name = f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-                    st.success(f"✅ Backup created: {backup_name}")
+                    import subprocess
+                    result = subprocess.run(['python', 'utilities/backup_database.py'],
+                                         capture_output=True, text=True, cwd='.')
+                    if result.returncode == 0:
+                        st.success("✅ Database backup created successfully!")
+                    else:
+                        st.error(f"❌ Backup failed: {result.stderr}")
                 except Exception as e:
-                    st.error(f"❌ Backup failed: {e}")
+                    st.error(f"❌ Backup error: {str(e)}")
 
     with col2:
-        st.markdown("**Database Stats:**")
+        st.markdown("**System Status:**")
+        # Show database stats
         try:
-            stats = get_database_stats()
-            st.write(f"📊 Total stocks: {stats.get('total_stocks', 'Unknown')}")
-            st.write(f"📈 Calculated metrics: {stats.get('calculated_stocks', 'Unknown')}")
-            st.write(f"📅 Last updated: {stats.get('last_calculation', 'Unknown')[:10]}")
-        except:
+            db_stats = get_database_stats()
+            if db_stats:
+                for key, value in db_stats.items():
+                    if key == 'coverage_pct':
+                        st.metric(key.replace('_', ' ').title(), f"{value:.1f}%")
+                    else:
+                        st.metric(key.replace('_', ' ').title(), f"{value:,}")
+        except Exception:
             st.write("Could not load database statistics")
 
-def main():
-    """Main dashboard application."""
 
-    # Sidebar title
+def main():
     st.sidebar.title("📊 Stock Outlier Analysis")
 
     # Initialize session state for slider values

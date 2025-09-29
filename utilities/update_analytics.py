@@ -85,7 +85,17 @@ def get_stocks_needing_update(db: DatabaseManager, symbols: Optional[List[str]] 
             
         calc_timestamp = result[0]
         if isinstance(calc_timestamp, str):
-            calc_timestamp = datetime.fromisoformat(calc_timestamp.replace('T', ' '))
+            if 'T' in calc_timestamp:
+                calc_timestamp = datetime.fromisoformat(calc_timestamp)
+            else:
+                # Handle format with or without microseconds
+                if '.' in calc_timestamp:
+                    try:
+                        calc_timestamp = datetime.strptime(calc_timestamp, '%Y-%m-%d %H:%M:%S.%f')
+                    except ValueError:
+                        calc_timestamp = datetime.strptime(calc_timestamp, '%Y-%m-%d %H:%M:%S')
+                else:
+                    calc_timestamp = datetime.strptime(calc_timestamp, '%Y-%m-%d %H:%M:%S')
         
         last_calc_times[symbol] = calc_timestamp
         
@@ -104,7 +114,14 @@ def get_stocks_needing_update(db: DatabaseManager, symbols: Optional[List[str]] 
                     if 'T' in data_timestamp:
                         data_timestamp = datetime.fromisoformat(data_timestamp)
                     else:
-                        data_timestamp = datetime.strptime(data_timestamp, '%Y-%m-%d %H:%M:%S')
+                        # Handle format with or without microseconds
+                        if '.' in data_timestamp:
+                            try:
+                                data_timestamp = datetime.strptime(data_timestamp, '%Y-%m-%d %H:%M:%S.%f')
+                            except ValueError:
+                                data_timestamp = datetime.strptime(data_timestamp, '%Y-%m-%d %H:%M:%S')
+                        else:
+                            data_timestamp = datetime.strptime(data_timestamp, '%Y-%m-%d %H:%M:%S')
                 
                 # If any data is newer than calculation, need to recalculate
                 if data_timestamp > calc_timestamp:

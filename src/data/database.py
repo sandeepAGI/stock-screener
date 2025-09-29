@@ -31,9 +31,17 @@ def convert_datetime(val):
         if 'T' in val_str:
             return datetime.fromisoformat(val_str)
         
-        # Handle old format: "2025-07-27 10:48:26"
+        # Handle old format: "2025-07-27 10:48:26" or with microseconds
         elif ' ' in val_str:
-            return datetime.strptime(val_str, '%Y-%m-%d %H:%M:%S')
+            # Try with microseconds first
+            if '.' in val_str:
+                try:
+                    return datetime.strptime(val_str, '%Y-%m-%d %H:%M:%S.%f')
+                except ValueError:
+                    # Fall back to no microseconds
+                    return datetime.strptime(val_str, '%Y-%m-%d %H:%M:%S')
+            else:
+                return datetime.strptime(val_str, '%Y-%m-%d %H:%M:%S')
         
         # Handle date-only format: "2025-07-27"
         else:
@@ -613,6 +621,64 @@ class DatabaseManager:
                     FOREIGN KEY (symbol) REFERENCES stocks(symbol),
                     UNIQUE(symbol, calculation_date)
                 )
+            ''',
+
+            'temp_sentiment_queue': '''
+                CREATE TABLE IF NOT EXISTS temp_sentiment_queue (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    symbol VARCHAR(10) NOT NULL,
+                    content_type VARCHAR(10) NOT NULL, -- 'news' or 'reddit'
+                    content_id INTEGER NOT NULL,       -- FK to original article/post
+                    text_content TEXT NOT NULL,        -- Combined title + summary/content
+                    source_table VARCHAR(50) NOT NULL, -- 'news_articles' or 'reddit_posts'
+
+                    -- Processing status
+                    processing_status VARCHAR(20) DEFAULT 'pending', -- 'pending', 'processing', 'completed', 'failed'
+                    batch_id VARCHAR(50),              -- Anthropic batch ID
+                    custom_id VARCHAR(100),            -- Individual request ID within batch
+
+                    -- Results
+                    sentiment_score REAL,
+                    confidence REAL,
+                    processing_method VARCHAR(20),     -- 'bulk_claude', 'individual', 'fallback'
+
+                    -- Audit trail
+                    raw_response TEXT,                 -- Full Anthropic response for debugging
+                    error_message TEXT,                -- Error details if failed
+                    retry_count INTEGER DEFAULT 0,    -- Number of retry attempts
+
+                    -- Timestamps
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    processed_at TIMESTAMP,
+
+                    -- Constraints
+                    FOREIGN KEY (symbol) REFERENCES stocks(symbol),
+                    UNIQUE(symbol, content_type, content_id) -- Prevent duplicates
+                )
+            ''',
+
+            'batch_mapping': '''
+                CREATE TABLE IF NOT EXISTS batch_mapping (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    batch_id VARCHAR(100) NOT NULL,
+                    custom_id VARCHAR(100) NOT NULL,
+                    table_name VARCHAR(50) NOT NULL,   -- 'news_articles' or 'reddit_posts'
+                    record_id INTEGER NOT NULL,         -- ID in the original table
+                    symbol VARCHAR(10),                 -- For easy filtering
+
+                    -- Status tracking
+                    status VARCHAR(20) DEFAULT 'submitted', -- 'submitted', 'completed', 'failed'
+                    sentiment_score REAL,               -- Store result here for quick access
+                    confidence REAL,
+                    error_message TEXT,
+
+                    -- Timestamps
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    processed_at TIMESTAMP,
+
+                    -- Constraints
+                    UNIQUE(batch_id, custom_id)
+                )
             '''
         }
         
@@ -633,7 +699,12 @@ class DatabaseManager:
             "CREATE INDEX IF NOT EXISTS idx_news_articles_symbol_date ON news_articles(symbol, publish_date)",
             "CREATE INDEX IF NOT EXISTS idx_reddit_posts_symbol_date ON reddit_posts(symbol, created_utc)",
             "CREATE INDEX IF NOT EXISTS idx_daily_sentiment_symbol_date ON daily_sentiment(symbol, date)",
-            "CREATE INDEX IF NOT EXISTS idx_calculated_metrics_symbol_date ON calculated_metrics(symbol, calculation_date)"
+            "CREATE INDEX IF NOT EXISTS idx_calculated_metrics_symbol_date ON calculated_metrics(symbol, calculation_date)",
+            "CREATE INDEX IF NOT EXISTS idx_temp_sentiment_queue_status ON temp_sentiment_queue(processing_status)",
+            "CREATE INDEX IF NOT EXISTS idx_temp_sentiment_queue_batch ON temp_sentiment_queue(batch_id)",
+            "CREATE INDEX IF NOT EXISTS idx_temp_sentiment_queue_symbol ON temp_sentiment_queue(symbol)",
+            "CREATE INDEX IF NOT EXISTS idx_batch_mapping_batch ON batch_mapping(batch_id)",
+            "CREATE INDEX IF NOT EXISTS idx_batch_mapping_record ON batch_mapping(table_name, record_id)"
         ]
         
         for index in indexes:
@@ -954,6 +1025,417 @@ class DatabaseManager:
             )
         
         logger.info(f"Initialized {len(sample_symbols)} sample stocks")
+
+    # Temporary Sentiment Queue Methods
+    def populate_sentiment_queue_from_existing_data(self, symbols: List[str] = None) -> int:
+        """
+        Populate temp_sentiment_queue with existing news and Reddit data
+
+        Args:
+            symbols: List of symbols to process (None = all symbols)
+
+        Returns:
+            Number of items added to queue
+        """
+        cursor = self.connection.cursor()
+
+        # Get symbols to process
+        if symbols is None:
+            cursor.execute("SELECT DISTINCT symbol FROM stocks WHERE is_active = 1")
+            symbols = [row[0] for row in cursor.fetchall()]
+
+        total_added = 0
+
+        # Clear existing queue for these symbols
+        placeholders = ','.join(['?' for _ in symbols])
+        cursor.execute(f"DELETE FROM temp_sentiment_queue WHERE symbol IN ({placeholders})", symbols)
+
+        for symbol in symbols:
+            # Add news articles to queue
+            cursor.execute("""
+                INSERT INTO temp_sentiment_queue
+                (symbol, content_type, content_id, text_content, source_table)
+                SELECT
+                    symbol,
+                    'news' as content_type,
+                    id as content_id,
+                    COALESCE(title, '') || '. ' || COALESCE(summary, '') as text_content,
+                    'news_articles' as source_table
+                FROM news_articles
+                WHERE symbol = ? AND (title IS NOT NULL OR summary IS NOT NULL)
+            """, (symbol,))
+
+            news_count = cursor.rowcount
+
+            # Add Reddit posts to queue
+            cursor.execute("""
+                INSERT INTO temp_sentiment_queue
+                (symbol, content_type, content_id, text_content, source_table)
+                SELECT
+                    symbol,
+                    'reddit' as content_type,
+                    id as content_id,
+                    COALESCE(title, '') || '. ' || COALESCE(content, '') as text_content,
+                    'reddit_posts' as source_table
+                FROM reddit_posts
+                WHERE symbol = ? AND (title IS NOT NULL OR content IS NOT NULL)
+            """, (symbol,))
+
+            reddit_count = cursor.rowcount
+            symbol_total = news_count + reddit_count
+            total_added += symbol_total
+
+            if symbol_total > 0:
+                logger.info(f"Added {news_count} news + {reddit_count} reddit = {symbol_total} items for {symbol}")
+
+        self.connection.commit()
+        cursor.close()
+
+        logger.info(f"Populated sentiment queue with {total_added} total items across {len(symbols)} symbols")
+        return total_added
+
+    def get_sentiment_queue_statistics(self) -> Dict[str, Any]:
+        """Get statistics about the sentiment queue for batch planning"""
+        cursor = self.connection.cursor()
+
+        # Overall statistics
+        cursor.execute("""
+            SELECT
+                COUNT(*) as total_items,
+                COUNT(DISTINCT symbol) as unique_symbols,
+                SUM(CASE WHEN content_type = 'news' THEN 1 ELSE 0 END) as news_count,
+                SUM(CASE WHEN content_type = 'reddit' THEN 1 ELSE 0 END) as reddit_count,
+                SUM(CASE WHEN processing_status = 'pending' THEN 1 ELSE 0 END) as pending_count,
+                SUM(CASE WHEN processing_status = 'completed' THEN 1 ELSE 0 END) as completed_count,
+                SUM(CASE WHEN processing_status = 'failed' THEN 1 ELSE 0 END) as failed_count,
+                AVG(LENGTH(text_content)) as avg_text_length,
+                SUM(LENGTH(text_content)) as total_text_size
+            FROM temp_sentiment_queue
+        """)
+
+        stats = dict(zip([desc[0] for desc in cursor.description], cursor.fetchone()))
+
+        # Size analysis for batch planning
+        cursor.execute("""
+            SELECT
+                symbol,
+                COUNT(*) as items_count,
+                SUM(LENGTH(text_content)) as text_size_bytes
+            FROM temp_sentiment_queue
+            WHERE processing_status = 'pending'
+            GROUP BY symbol
+            ORDER BY items_count DESC
+            LIMIT 10
+        """)
+
+        top_symbols = []
+        for row in cursor.fetchall():
+            top_symbols.append({
+                'symbol': row[0],
+                'items': row[1],
+                'size_bytes': row[2],
+                'size_kb': round(row[2] / 1024, 1)
+            })
+
+        stats['top_symbols_by_volume'] = top_symbols
+
+        # Check if we're within Anthropic's 10,000 request limit
+        stats['within_single_batch_limit'] = stats['pending_count'] <= 10000
+        stats['estimated_batches_needed'] = max(1, (stats['pending_count'] + 9999) // 10000)
+
+        cursor.close()
+        return stats
+
+    def get_pending_sentiment_batch(self, limit: int = 10000) -> List[Dict[str, Any]]:
+        """Get next batch of pending sentiment items for processing"""
+        cursor = self.connection.cursor()
+
+        cursor.execute("""
+            SELECT id, symbol, content_type, content_id, text_content, source_table
+            FROM temp_sentiment_queue
+            WHERE processing_status = 'pending'
+            ORDER BY created_at
+            LIMIT ?
+        """, (limit,))
+
+        batch = []
+        for row in cursor.fetchall():
+            batch.append({
+                'queue_id': row[0],
+                'symbol': row[1],
+                'content_type': row[2],
+                'content_id': row[3],
+                'text_content': row[4],
+                'source_table': row[5],
+                'custom_id': f"{row[2]}_{row[1]}_{row[0]}"  # type_symbol_queueid
+            })
+
+        cursor.close()
+        return batch
+
+    def mark_sentiment_batch_processing(self, batch_items: List[Dict], batch_id: str):
+        """Mark items as processing and assign batch ID"""
+        cursor = self.connection.cursor()
+
+        queue_ids = [item['queue_id'] for item in batch_items]
+        custom_ids = [item['custom_id'] for item in batch_items]
+
+        # Update status to processing
+        placeholders = ','.join(['?' for _ in queue_ids])
+        cursor.execute(f"""
+            UPDATE temp_sentiment_queue
+            SET processing_status = 'processing', batch_id = ?, processed_at = CURRENT_TIMESTAMP
+            WHERE id IN ({placeholders})
+        """, [batch_id] + queue_ids)
+
+        # Update custom_ids
+        for i, queue_id in enumerate(queue_ids):
+            cursor.execute("""
+                UPDATE temp_sentiment_queue
+                SET custom_id = ?
+                WHERE id = ?
+            """, (custom_ids[i], queue_id))
+
+        self.connection.commit()
+        cursor.close()
+
+        logger.info(f"Marked {len(batch_items)} items as processing with batch_id: {batch_id}")
+
+    def update_sentiment_results(self, results: List[Dict[str, Any]]):
+        """Update sentiment queue with processing results"""
+        if not results:
+            return
+
+        cursor = self.connection.cursor()
+
+        # Batch update for efficiency
+        update_data = []
+        for result in results:
+            update_data.append((
+                'completed' if result.get('success') else 'failed',
+                result.get('sentiment_score'),
+                result.get('confidence'),
+                result.get('method', 'bulk_claude'),
+                result.get('raw_response'),
+                result.get('error'),
+                result.get('custom_id')
+            ))
+
+        cursor.executemany("""
+            UPDATE temp_sentiment_queue
+            SET
+                processing_status = ?,
+                sentiment_score = ?,
+                confidence = ?,
+                processing_method = ?,
+                raw_response = ?,
+                error_message = ?,
+                processed_at = CURRENT_TIMESTAMP
+            WHERE custom_id = ?
+        """, update_data)
+
+        self.connection.commit()
+        cursor.close()
+
+        logger.info(f"Updated {len(results)} sentiment processing results")
+
+    def cleanup_old_sentiment_queue(self, days_old: int = 7):
+        """Clean up old completed/failed sentiment queue entries"""
+        cursor = self.connection.cursor()
+
+        cursor.execute("""
+            DELETE FROM temp_sentiment_queue
+            WHERE processing_status IN ('completed', 'failed')
+            AND created_at < datetime('now', '-{} days')
+        """.format(days_old))
+
+        deleted_count = cursor.rowcount
+        self.connection.commit()
+        cursor.close()
+
+        logger.info(f"Cleaned up {deleted_count} old sentiment queue entries")
+        return deleted_count
+
+    def get_active_batch_ids(self) -> List[str]:
+        """Get list of active (not fully processed) batch IDs"""
+        cursor = self.connection.cursor()
+
+        cursor.execute("""
+            SELECT DISTINCT batch_id
+            FROM batch_mapping
+            WHERE status IN ('submitted', 'processing')
+            ORDER BY created_at DESC
+        """)
+
+        batch_ids = [row[0] for row in cursor.fetchall()]
+        cursor.close()
+
+        return batch_ids
+
+    def get_overall_batch_summary(self) -> Dict:
+        """Get overall summary of all batches"""
+        cursor = self.connection.cursor()
+
+        # Get count of batches by status
+        cursor.execute("""
+            SELECT status, COUNT(*) as count
+            FROM batches
+            GROUP BY status
+        """)
+        batch_counts = dict(cursor.fetchall())
+
+        cursor.close()
+
+        return {
+            'pending': batch_counts.get('pending', 0),
+            'in_progress': batch_counts.get('in_progress', 0),
+            'completed': batch_counts.get('completed', 0),
+            'failed': batch_counts.get('failed', 0)
+        }
+
+    def get_batch_status_summary(self, batch_id: str) -> Dict:
+        """Get status summary for a specific batch"""
+        cursor = self.connection.cursor()
+
+        # Get status counts
+        cursor.execute("""
+            SELECT status, COUNT(*) as count
+            FROM batch_mapping
+            WHERE batch_id = ?
+            GROUP BY status
+        """, (batch_id,))
+        status_counts = dict(cursor.fetchall())
+
+        # Get batch metadata
+        cursor.execute("""
+            SELECT
+                MIN(created_at) as started_at,
+                MAX(processed_at) as last_processed,
+                COUNT(DISTINCT symbol) as unique_symbols,
+                COUNT(*) as total_items
+            FROM batch_mapping
+            WHERE batch_id = ?
+        """, (batch_id,))
+        metadata = cursor.fetchone()
+
+        cursor.close()
+
+        return {
+            'batch_id': batch_id,
+            'total_items': metadata[3] if metadata else 0,
+            'unique_symbols': metadata[2] if metadata else 0,
+            'submitted': status_counts.get('submitted', 0),
+            'completed': status_counts.get('completed', 0),
+            'failed': status_counts.get('failed', 0),
+            'started_at': metadata[0] if metadata else None,
+            'last_processed': metadata[1] if metadata else None
+        }
+
+    def get_unprocessed_items_for_batch(self) -> List[Dict]:
+        """Get unprocessed items from original tables for batch submission"""
+        cursor = self.connection.cursor()
+
+        items = []
+
+        # Get unprocessed news articles
+        cursor.execute("""
+            SELECT
+                n.id,
+                n.symbol,
+                n.title,
+                n.summary,
+                'news' as content_type
+            FROM news_articles n
+            LEFT JOIN batch_mapping bm ON bm.record_type = 'news' AND bm.record_id = n.id
+            WHERE (n.sentiment_score IS NULL OR n.sentiment_score = 0.0)
+            AND bm.id IS NULL  -- Not already in a batch
+            ORDER BY n.symbol, n.id
+        """)
+
+        for row in cursor.fetchall():
+            items.append({
+                'record_id': row[0],
+                'symbol': row[1],
+                'title': row[2],
+                'content': row[3] or '',
+                'content_type': row[4],
+                'table_name': 'news_articles'
+            })
+
+        # Get unprocessed Reddit posts
+        cursor.execute("""
+            SELECT
+                r.id,
+                r.symbol,
+                r.title,
+                r.content,
+                'reddit' as content_type
+            FROM reddit_posts r
+            LEFT JOIN batch_mapping bm ON bm.record_type = 'reddit' AND bm.record_id = r.id
+            WHERE (r.sentiment_score IS NULL OR r.sentiment_score = 0.0)
+            AND bm.id IS NULL  -- Not already in a batch
+            ORDER BY r.symbol, r.id
+        """)
+
+        for row in cursor.fetchall():
+            items.append({
+                'record_id': row[0],
+                'symbol': row[1],
+                'title': row[2],
+                'content': row[3] or '',
+                'content_type': row[4],
+                'table_name': 'reddit_posts'
+            })
+
+        cursor.close()
+
+        logger.info(f"Found {len(items)} unprocessed items for batch processing")
+        return items
+
+    def update_sentiment_scores_direct(self, results: List[Dict[str, Any]]):
+        """Update sentiment scores directly in news_articles and reddit_posts tables"""
+        if not results:
+            return
+
+        cursor = self.connection.cursor()
+        news_updates = []
+        reddit_updates = []
+
+        for result in results:
+            custom_id = result.get('custom_id', '')
+            sentiment_score = result.get('sentiment_score', 0.0)
+            confidence = result.get('confidence', 0.5)
+
+            # Extract record ID and type from custom_id
+            if custom_id.startswith('news_id_'):
+                record_id = int(custom_id.replace('news_id_', ''))
+                news_updates.append((sentiment_score, confidence, record_id))
+            elif custom_id.startswith('reddit_id_'):
+                record_id = int(custom_id.replace('reddit_id_', ''))
+                reddit_updates.append((sentiment_score, confidence, record_id))
+
+        # Batch update news articles
+        if news_updates:
+            cursor.executemany("""
+                UPDATE news_articles
+                SET sentiment_score = ?, data_quality_score = ?
+                WHERE id = ?
+            """, news_updates)
+            logger.info(f"Updated {len(news_updates)} news articles with sentiment scores")
+
+        # Batch update Reddit posts
+        if reddit_updates:
+            cursor.executemany("""
+                UPDATE reddit_posts
+                SET sentiment_score = ?, data_quality_score = ?
+                WHERE id = ?
+            """, reddit_updates)
+            logger.info(f"Updated {len(reddit_updates)} Reddit posts with sentiment scores")
+
+        self.connection.commit()
+        cursor.close()
+
+        logger.info(f"Successfully updated sentiment scores for {len(results)} items")
 
 # Convenience functions
 def init_database(config_path: Optional[str] = None) -> DatabaseManager:
