@@ -1086,26 +1086,66 @@ def show_data_management():
                     help=f"Last updated: {last_update}"
                 )
 
-    # Data Refresh Controls
-    st.subheader("🔄 Data Refresh Controls")
+    # Data Refresh Workflow
+    st.subheader("🔄 Data Refresh Workflow")
 
-    # Refresh options
+    st.markdown("""
+    **Complete refresh process in 3 steps:**
+    1. 🚀 **Quick Refresh** - Update core data (fundamentals + prices)
+    2. 📰 **Manual Refresh** - Add news and sentiment data
+    3. 🔄 **Refresh Metrics** - Recalculate composite scores
+    """)
+
+    # Step 1: Quick Refresh
+    st.markdown("### Step 1: 🚀 Quick Data Refresh")
+
     col1, col2 = st.columns([2, 1])
 
     with col1:
-        st.markdown("**Select data types to refresh:**")
+        st.markdown("**Updates essential data for all stocks:**")
+        st.markdown("• 📊 Fundamental Data (P/E, market cap, revenue, etc.)")
+        st.markdown("• 💹 Price Data (historical prices and volume)")
+        st.markdown("• ⚡ Fast update for ~503 stocks")
+
+    with col2:
+        if st.button("🚀 Start Quick Refresh", type="primary", help="Refresh fundamentals and prices for all stocks - typically completes in 2-5 minutes"):
+            # Store in session state to persist results
+            if 'quick_refresh_results' not in st.session_state:
+                st.session_state.quick_refresh_results = None
+
+            data_types = ['fundamentals', 'prices']
+            progress_placeholder = st.empty()
+
+            with st.spinner("Refreshing core data..."):
+                success, results = run_data_refresh(data_types, None, progress_placeholder)
+                st.session_state.quick_refresh_results = {
+                    'success': success,
+                    'results': results,
+                    'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                }
+
+            if success:
+                st.success("✅ Quick refresh completed!")
+                st.info("▶️ **Next:** Run Step 2 for complete data update")
+            else:
+                st.error(f"❌ Quick refresh failed: {results}")
+
+    # Step 2: Manual Refresh Options
+    st.markdown("### Step 2: 📰 Additional Data Refresh (Optional)")
+
+    col1, col2 = st.columns([3, 1])
+
+    with col1:
+        st.markdown("**Select additional data types to refresh:**")
 
         # Checkboxes for data types
-        refresh_fundamentals = st.checkbox("📊 Fundamental Data", help="P/E ratios, market cap, financial metrics")
-        refresh_prices = st.checkbox("💹 Price Data", help="Historical price and volume data")
-        refresh_news = st.checkbox("📰 News Data", help="Recent news headlines and sentiment")
-        refresh_sentiment = st.checkbox("💭 Sentiment Data", help="Reddit posts and social sentiment")
+        refresh_news = st.checkbox("📰 News Data", help="Recent news headlines and sentiment analysis")
+        refresh_sentiment = st.checkbox("💭 Social Sentiment", help="Reddit posts and social media sentiment")
 
         # Symbol selection
         refresh_all_stocks = st.checkbox("All Stocks", value=True, help="Refresh all stocks or select specific ones")
 
         if not refresh_all_stocks:
-            # Get available symbols
             try:
                 conn = sqlite3.connect('data/stock_data.db')
                 symbol_query = "SELECT DISTINCT symbol FROM stocks ORDER BY symbol"
@@ -1116,40 +1156,65 @@ def show_data_management():
                 selected_symbols = st.multiselect(
                     "Select specific stocks:",
                     options=available_symbols,
-                    default=available_symbols[:5],
-                    help="Choose specific stocks to refresh (default: first 5)"
+                    default=available_symbols[:10],
+                    help="Choose specific stocks to refresh"
                 )
             except:
-                selected_symbols = ['AAPL', 'MSFT', 'GOOGL']
+                selected_symbols = ['AAPL', 'MSFT', 'GOOGL', 'TSLA', 'AMZN']
                 st.warning("Could not load symbols from database, using defaults")
         else:
             selected_symbols = None
 
     with col2:
-        st.markdown("**Quick Actions:**")
+        # Collect selected data types
+        selected_data_types = []
+        if refresh_news:
+            selected_data_types.append('news')
+        if refresh_sentiment:
+            selected_data_types.append('sentiment')
 
-        # Quick refresh buttons
-        if st.button("🚀 Quick Refresh", help="Refresh fundamentals and prices for all stocks"):
-            data_types = ['fundamentals', 'prices']
+        if selected_data_types:
+            if st.button("📰 Start Manual Refresh", help="Refresh selected data types"):
+                if 'manual_refresh_results' not in st.session_state:
+                    st.session_state.manual_refresh_results = None
 
-            # Progress tracking
-            progress_placeholder = st.empty()
-            status_placeholder = st.empty()
+                progress_placeholder = st.empty()
 
-            with status_placeholder:
-                st.info("Starting quick refresh...")
+                with st.spinner(f"Refreshing {', '.join(selected_data_types)}..."):
+                    success, results = run_data_refresh(selected_data_types, selected_symbols, progress_placeholder)
+                    st.session_state.manual_refresh_results = {
+                        'success': success,
+                        'results': results,
+                        'data_types': selected_data_types,
+                        'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    }
 
-            success, results = run_data_refresh(data_types, None, progress_placeholder)
+                if success:
+                    st.success("✅ Manual refresh completed!")
+                    st.info("▶️ **Next:** Run Step 3 to recalculate metrics")
+                else:
+                    st.error(f"❌ Manual refresh failed: {results}")
+        else:
+            st.info("👆 Select data types above")
 
-            if success:
-                st.success("✅ Quick refresh completed!")
-                with st.expander("View Results"):
-                    st.json(results)
-            else:
-                st.error(f"❌ Quick refresh failed: {results}")
+    # Step 3: Refresh Metrics (moved out of quick actions)
+    st.markdown("### Step 3: 🔄 Recalculate Composite Scores")
 
-        if st.button("🔄 Refresh Metrics", help="Recalculate composite scores"):
-            with st.spinner("Recalculating metrics..."):
+    col1, col2 = st.columns([3, 1])
+
+    with col1:
+        st.markdown("**Final step - recalculate all composite scores:**")
+        st.markdown("• 📊 Processes all fundamental, quality, growth, and sentiment data")
+        st.markdown("• 🔢 Generates composite scores using 40/25/20/15 weighting")
+        st.markdown("• ⏱️ Takes 3-5 minutes for all stocks")
+        st.warning("⚠️ **Important:** Run this after any data refresh to update rankings")
+
+    with col2:
+        if st.button("🔄 Recalculate Metrics", type="secondary", help="Recalculate composite scores - REQUIRED after data refresh"):
+            if 'metrics_refresh_results' not in st.session_state:
+                st.session_state.metrics_refresh_results = None
+
+            with st.spinner("Recalculating all metrics..."):
                 try:
                     # Import and call the analytics update utility
                     from utilities.update_analytics import update_analytics
@@ -1162,8 +1227,6 @@ def show_data_management():
                     # Create a logger that writes to both console and our buffer
                     logger = logging.getLogger('dashboard_metrics')
                     logger.setLevel(logging.INFO)
-
-                    # Clear existing handlers
                     logger.handlers.clear()
 
                     # Add handler for our capture
@@ -1195,119 +1258,145 @@ def show_data_management():
                               'quality concerns' in line):
                             warnings.append(line.strip())
 
-                    # Display results
+                    # Store results in session state
+                    st.session_state.metrics_refresh_results = {
+                        'success': success,
+                        'success_stocks': success_stocks,
+                        'failed_stocks': failed_stocks,
+                        'warnings': warnings,
+                        'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    }
+
+                    # Display immediate feedback
                     if success:
                         if len(failed_stocks) == 0:
-                            st.success("✅ Metrics recalculated successfully!")
-                            st.info(f"📊 All {len(success_stocks)} stocks updated with latest composite scores")
+                            st.success("✅ All metrics recalculated successfully!")
                         else:
                             st.warning("⚠️ Metrics calculation completed with some issues")
-                            st.info(f"📊 {len(success_stocks)} stocks updated successfully, {len(failed_stocks)} had issues")
                     else:
                         st.error("❌ Metrics calculation failed")
 
-                    # Show detailed results in expandable sections
-                    if success_stocks:
-                        with st.expander(f"✅ Successfully Updated ({len(success_stocks)} stocks)", expanded=False):
-                            cols = st.columns(6)
-                            for i, symbol in enumerate(success_stocks):
-                                with cols[i % 6]:
-                                    st.write(f"✅ {symbol}")
-
-                    if failed_stocks:
-                        with st.expander(f"❌ Failed Updates ({len(failed_stocks)} stocks)", expanded=True):
-                            cols = st.columns(6)
-                            for i, symbol in enumerate(failed_stocks):
-                                with cols[i % 6]:
-                                    st.write(f"❌ {symbol}")
-
-                    if warnings:
-                        with st.expander(f"⚠️ Warnings & Issues ({len(warnings)} items)", expanded=True):
-                            for warning in warnings[:20]:  # Limit to first 20 warnings
-                                if warning.strip():
-                                    st.text(warning)
-                            if len(warnings) > 20:
-                                st.text(f"... and {len(warnings) - 20} more warnings")
-
-                    # Show summary statistics
-                    if success_stocks or failed_stocks:
-                        total_processed = len(success_stocks) + len(failed_stocks)
-                        success_rate = (len(success_stocks) / total_processed * 100) if total_processed > 0 else 0
-
-                        col1, col2, col3 = st.columns(3)
-                        with col1:
-                            st.metric("Success Rate", f"{success_rate:.1f}%")
-                        with col2:
-                            st.metric("Successful", len(success_stocks))
-                        with col3:
-                            st.metric("Failed", len(failed_stocks))
-
-                    # Refresh the page to show updated data
-                    time.sleep(1)  # Brief pause to ensure database writes complete
-                    st.rerun()
+                    # Don't auto-rerun - let user see results
+                    st.info("📊 Check the 'Refresh Results' section below for detailed feedback")
 
                 except Exception as e:
                     st.error(f"❌ Failed to recalculate metrics: {e}")
                     st.error("💡 Try running: python utilities/update_analytics.py")
-                    import traceback
-                    with st.expander("🔍 Error Details"):
-                        st.code(traceback.format_exc())
 
-    # Manual refresh section
+    # Persistent Refresh Results Section
     st.markdown("---")
+    st.subheader("📊 Refresh Results & Status")
 
-    # Collect selected data types
-    selected_data_types = []
-    if refresh_fundamentals:
-        selected_data_types.append('fundamentals')
-    if refresh_prices:
-        selected_data_types.append('prices')
-    if refresh_news:
-        selected_data_types.append('news')
-    if refresh_sentiment:
-        selected_data_types.append('sentiment')
+    # Display Quick Refresh Results
+    if hasattr(st.session_state, 'quick_refresh_results') and st.session_state.quick_refresh_results:
+        results = st.session_state.quick_refresh_results
+        with st.expander(f"🚀 Quick Refresh Results - {results['timestamp']}", expanded=True):
+            if results['success']:
+                st.success("✅ Quick refresh completed successfully")
+                if results['results']:
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        if 'fundamentals' in results['results']:
+                            fund_result = results['results']['fundamentals']
+                            if isinstance(fund_result, dict):
+                                success_count = sum(1 for v in fund_result.values() if v)
+                                total_count = len(fund_result)
+                                st.write(f"📊 **Fundamentals**: {success_count}/{total_count} stocks updated")
+                    with col2:
+                        if 'prices' in results['results']:
+                            price_result = results['results']['prices']
+                            if isinstance(price_result, dict):
+                                success_count = sum(1 for v in price_result.values() if v)
+                                total_count = len(price_result)
+                                st.write(f"💹 **Prices**: {success_count}/{total_count} stocks updated")
+            else:
+                st.error("❌ Quick refresh failed")
+                st.write(f"Error: {results['results']}")
 
-    if selected_data_types:
-        col1, col2, col3 = st.columns([1, 1, 1])
-
-        with col1:
-            if st.button("🔄 Start Refresh", type="primary", help="Start manual refresh with selected options"):
-                # Progress tracking
-                progress_placeholder = st.empty()
-                status_placeholder = st.empty()
-
-                with status_placeholder:
-                    st.info(f"Starting refresh for: {', '.join(selected_data_types)}")
-
-                success, results = run_data_refresh(selected_data_types, selected_symbols, progress_placeholder)
-
-                if success:
-                    st.success("✅ Data refresh completed!")
-
-                    # Show detailed results
-                    with st.expander("📊 Refresh Results", expanded=True):
-                        for data_type, result in results.items():
+    # Display Manual Refresh Results
+    if hasattr(st.session_state, 'manual_refresh_results') and st.session_state.manual_refresh_results:
+        results = st.session_state.manual_refresh_results
+        with st.expander(f"📰 Manual Refresh Results - {results['timestamp']}", expanded=True):
+            if results['success']:
+                st.success(f"✅ Manual refresh completed for: {', '.join(results['data_types'])}")
+                if results['results']:
+                    for data_type in results['data_types']:
+                        if data_type in results['results']:
+                            result = results['results'][data_type]
                             if isinstance(result, dict):
                                 success_count = sum(1 for v in result.values() if v)
                                 total_count = len(result)
-                                st.write(f"**{data_type.title()}**: {success_count}/{total_count} symbols updated")
-                            else:
-                                st.write(f"**{data_type.title()}**: {result}")
+                                icon = "📰" if data_type == "news" else "💭"
+                                st.write(f"{icon} **{data_type.title()}**: {success_count}/{total_count} stocks updated")
+            else:
+                st.error("❌ Manual refresh failed")
+                st.write(f"Error: {results['results']}")
 
-                    # Refresh page to show updated status
-                    time.sleep(1)
-                    st.rerun()
+    # Display Metrics Refresh Results
+    if hasattr(st.session_state, 'metrics_refresh_results') and st.session_state.metrics_refresh_results:
+        results = st.session_state.metrics_refresh_results
+        with st.expander(f"🔄 Metrics Refresh Results - {results['timestamp']}", expanded=True):
+            if results['success']:
+                if len(results['failed_stocks']) == 0:
+                    st.success("✅ All metrics recalculated successfully!")
+                    st.info(f"📊 All {len(results['success_stocks'])} stocks updated with latest composite scores")
                 else:
-                    st.error(f"❌ Refresh failed: {results}")
+                    st.warning("⚠️ Metrics calculation completed with some issues")
+                    st.info(f"📊 {len(results['success_stocks'])} stocks updated successfully, {len(results['failed_stocks'])} had issues")
 
-        with col2:
-            st.metric("Data Types", len(selected_data_types))
+                # Show detailed results in nested expandable sections
+                if results['success_stocks']:
+                    with st.expander(f"✅ Successfully Updated ({len(results['success_stocks'])} stocks)", expanded=False):
+                        # Display in multiple columns for better layout
+                        cols = st.columns(6)
+                        for i, symbol in enumerate(results['success_stocks']):
+                            with cols[i % 6]:
+                                st.write(f"✅ {symbol}")
 
-        with col3:
-            symbol_count = len(selected_symbols) if selected_symbols else "All"
-            st.metric("Symbols", symbol_count)
-    else:
-        st.info("👆 Select data types above to enable refresh options")
+                if results['failed_stocks']:
+                    with st.expander(f"❌ Failed Updates ({len(results['failed_stocks'])} stocks)", expanded=True):
+                        cols = st.columns(6)
+                        for i, symbol in enumerate(results['failed_stocks']):
+                            with cols[i % 6]:
+                                st.write(f"❌ {symbol}")
+
+                if results['warnings']:
+                    with st.expander(f"⚠️ Warnings & Issues ({len(results['warnings'])} items)", expanded=True):
+                        for warning in results['warnings'][:20]:  # Limit to first 20 warnings
+                            if warning.strip():
+                                st.text(warning)
+                        if len(results['warnings']) > 20:
+                            st.text(f"... and {len(results['warnings']) - 20} more warnings")
+
+                # Show summary statistics
+                if results['success_stocks'] or results['failed_stocks']:
+                    total_processed = len(results['success_stocks']) + len(results['failed_stocks'])
+                    success_rate = (len(results['success_stocks']) / total_processed * 100) if total_processed > 0 else 0
+
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("Success Rate", f"{success_rate:.1f}%")
+                    with col2:
+                        st.metric("Successful", len(results['success_stocks']))
+                    with col3:
+                        st.metric("Failed", len(results['failed_stocks']))
+            else:
+                st.error("❌ Metrics calculation failed")
+
+    # Clear Results Button
+    if (hasattr(st.session_state, 'quick_refresh_results') or
+        hasattr(st.session_state, 'manual_refresh_results') or
+        hasattr(st.session_state, 'metrics_refresh_results')):
+
+        if st.button("🗑️ Clear Results History", help="Clear all stored refresh results"):
+            if hasattr(st.session_state, 'quick_refresh_results'):
+                del st.session_state.quick_refresh_results
+            if hasattr(st.session_state, 'manual_refresh_results'):
+                del st.session_state.manual_refresh_results
+            if hasattr(st.session_state, 'metrics_refresh_results'):
+                del st.session_state.metrics_refresh_results
+            st.rerun()
+
 
     # Database Management
     st.subheader("💾 Database Management")
