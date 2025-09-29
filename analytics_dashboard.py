@@ -1116,19 +1116,32 @@ def show_data_management():
             data_types = ['fundamentals', 'prices']
             progress_placeholder = st.empty()
 
-            with st.spinner("Refreshing core data..."):
-                success, results = run_data_refresh(data_types, None, progress_placeholder)
+            try:
+                with st.spinner("Refreshing core data..."):
+                    success, results = run_data_refresh(data_types, None, progress_placeholder)
+                    st.session_state.quick_refresh_results = {
+                        'success': success,
+                        'results': results,
+                        'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    }
+
+                if success:
+                    st.success("✅ Quick refresh completed!")
+                    st.info("▶️ **Next:** Run Step 2 for complete data update")
+                else:
+                    st.error(f"❌ Quick refresh failed: {results}")
+                    st.info("📊 Check the 'Refresh Results' section below for details")
+
+            except Exception as e:
+                # Store the failure in session state
                 st.session_state.quick_refresh_results = {
-                    'success': success,
-                    'results': results,
+                    'success': False,
+                    'results': f"Exception: {str(e)}",
+                    'error': str(e),
                     'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 }
-
-            if success:
-                st.success("✅ Quick refresh completed!")
-                st.info("▶️ **Next:** Run Step 2 for complete data update")
-            else:
-                st.error(f"❌ Quick refresh failed: {results}")
+                st.error(f"❌ Quick refresh failed with error: {e}")
+                st.info("📊 Check the 'Refresh Results' section below for error details")
 
     # Step 2: Manual Refresh Options
     st.markdown("### Step 2: 📰 Additional Data Refresh (Optional)")
@@ -1180,20 +1193,34 @@ def show_data_management():
 
                 progress_placeholder = st.empty()
 
-                with st.spinner(f"Refreshing {', '.join(selected_data_types)}..."):
-                    success, results = run_data_refresh(selected_data_types, selected_symbols, progress_placeholder)
+                try:
+                    with st.spinner(f"Refreshing {', '.join(selected_data_types)}..."):
+                        success, results = run_data_refresh(selected_data_types, selected_symbols, progress_placeholder)
+                        st.session_state.manual_refresh_results = {
+                            'success': success,
+                            'results': results,
+                            'data_types': selected_data_types,
+                            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                        }
+
+                    if success:
+                        st.success("✅ Manual refresh completed!")
+                        st.info("▶️ **Next:** Run Step 3 to recalculate metrics")
+                    else:
+                        st.error(f"❌ Manual refresh failed: {results}")
+                        st.info("📊 Check the 'Refresh Results' section below for details")
+
+                except Exception as e:
+                    # Store the failure in session state
                     st.session_state.manual_refresh_results = {
-                        'success': success,
-                        'results': results,
+                        'success': False,
+                        'results': f"Exception: {str(e)}",
                         'data_types': selected_data_types,
+                        'error': str(e),
                         'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                     }
-
-                if success:
-                    st.success("✅ Manual refresh completed!")
-                    st.info("▶️ **Next:** Run Step 3 to recalculate metrics")
-                else:
-                    st.error(f"❌ Manual refresh failed: {results}")
+                    st.error(f"❌ Manual refresh failed with error: {e}")
+                    st.info("📊 Check the 'Refresh Results' section below for error details")
         else:
             st.info("👆 Select data types above")
 
@@ -1280,8 +1307,19 @@ def show_data_management():
                     st.info("📊 Check the 'Refresh Results' section below for detailed feedback")
 
                 except Exception as e:
+                    # Store the failure in session state too
+                    st.session_state.metrics_refresh_results = {
+                        'success': False,
+                        'error': str(e),
+                        'success_stocks': [],
+                        'failed_stocks': [],
+                        'warnings': [],
+                        'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    }
+
                     st.error(f"❌ Failed to recalculate metrics: {e}")
                     st.error("💡 Try running: python utilities/update_analytics.py")
+                    st.info("📊 Check the 'Refresh Results' section below for error details")
 
     # Persistent Refresh Results Section
     st.markdown("---")
@@ -1313,6 +1351,16 @@ def show_data_management():
                 st.error("❌ Quick refresh failed")
                 st.write(f"Error: {results['results']}")
 
+                # Show error details if available
+                if 'error' in results:
+                    with st.expander("🔍 Error Details", expanded=True):
+                        st.code(results['error'])
+                        st.markdown("**Suggested actions:**")
+                        st.markdown("1. Check internet connection")
+                        st.markdown("2. Verify Yahoo Finance API is accessible")
+                        st.markdown("3. Try again in a few minutes")
+                        st.markdown("4. Check system resources and restart if needed")
+
     # Display Manual Refresh Results
     if hasattr(st.session_state, 'manual_refresh_results') and st.session_state.manual_refresh_results:
         results = st.session_state.manual_refresh_results
@@ -1331,6 +1379,16 @@ def show_data_management():
             else:
                 st.error("❌ Manual refresh failed")
                 st.write(f"Error: {results['results']}")
+
+                # Show error details if available
+                if 'error' in results:
+                    with st.expander("🔍 Error Details", expanded=True):
+                        st.code(results['error'])
+                        st.markdown("**Suggested actions:**")
+                        st.markdown("1. Check API credentials (.env file)")
+                        st.markdown("2. Verify Reddit API and News API access")
+                        st.markdown("3. Try refreshing fewer stocks")
+                        st.markdown("4. Check system resources and restart if needed")
 
     # Display Metrics Refresh Results
     if hasattr(st.session_state, 'metrics_refresh_results') and st.session_state.metrics_refresh_results:
@@ -1381,7 +1439,26 @@ def show_data_management():
                     with col3:
                         st.metric("Failed", len(results['failed_stocks']))
             else:
-                st.error("❌ Metrics calculation failed")
+                # Handle complete failure case
+                st.error("❌ Metrics calculation failed completely")
+
+                # Show error details if available
+                if 'error' in results:
+                    with st.expander("🔍 Error Details", expanded=True):
+                        st.code(results['error'])
+
+                        # Provide troubleshooting suggestions
+                        st.markdown("**Possible causes:**")
+                        st.markdown("• Database connection issues")
+                        st.markdown("• Missing dependencies or imports")
+                        st.markdown("• Insufficient data for calculations")
+                        st.markdown("• Memory or processing limitations")
+
+                        st.markdown("**Suggested actions:**")
+                        st.markdown("1. Try running a data refresh first")
+                        st.markdown("2. Check database connectivity")
+                        st.markdown("3. Run command line version: `python utilities/update_analytics.py`")
+                        st.markdown("4. Check system resources and restart if needed")
 
     # Clear Results Button
     if (hasattr(st.session_state, 'quick_refresh_results') or
