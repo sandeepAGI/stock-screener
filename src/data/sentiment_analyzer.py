@@ -187,7 +187,7 @@ class SentimentAnalyzer:
         try:
             response = self.claude_client.messages.create(
                 model="claude-3-haiku-20240307",  # Fast and cost-effective
-                max_tokens=200,
+                max_tokens=150,  # Reduced since we removed reasoning field
                 temperature=0.1,  # Low temperature for consistent results
                 messages=[
                     {
@@ -228,14 +228,12 @@ class SentimentAnalyzer:
 Return your response in this exact JSON format:
 {
     "sentiment_score": <float between -1.0 and 1.0>,
-    "confidence": <float between 0.0 and 1.0>,
-    "reasoning": "<brief explanation of sentiment factors>"
+    "confidence": <float between 0.0 and 1.0>
 }
 
 Where:
 - sentiment_score: -1.0 = very negative, 0.0 = neutral, 1.0 = very positive
 - confidence: How confident you are in this assessment
-- reasoning: Key factors that influenced the sentiment
 
 """
 
@@ -292,7 +290,6 @@ Where:
 
             sentiment_score = float(data.get('sentiment_score', 0.0))
             confidence = float(data.get('confidence', 0.5))
-            reasoning = data.get('reasoning', 'No reasoning provided')
 
             # Ensure bounds
             sentiment_score = max(-1.0, min(1.0, sentiment_score))
@@ -304,23 +301,53 @@ Where:
                 data_quality=confidence,  # Use confidence as data quality
                 method='claude',
                 confidence=confidence,
-                reasoning=reasoning
+                reasoning="Claude LLM analysis (no reasoning stored)"
             )
 
         except (json.JSONDecodeError, ValueError, KeyError) as e:
-            logger.error(f"Failed to parse Claude response: {e}. Response: {response}")
-            # Fallback: try to extract just the number
+            logger.warning(f"Failed to parse Claude response as JSON: {e}")
+
+            # Enhanced fallback: try multiple extraction methods
             try:
                 import re
+
+                # Method 1: Extract sentiment_score and confidence from partial JSON
+                sentiment_match = re.search(r'"sentiment_score":\s*([0-9.-]+)', response)
+                confidence_match = re.search(r'"confidence":\s*([0-9.-]+)', response)
+
+                if sentiment_match:
+                    sentiment_score = max(-1.0, min(1.0, float(sentiment_match.group(1))))
+                    confidence = max(0.0, min(1.0, float(confidence_match.group(1)))) if confidence_match else 0.5
+
+                    logger.info(f"Successfully extracted from partial JSON: sentiment={sentiment_score}, confidence={confidence}")
+                    return SentimentScore(
+                        text=original_text,
+                        sentiment_score=sentiment_score,
+                        data_quality=confidence,
+                        method='claude_partial',
+                        confidence=confidence,
+                        reasoning="Partial JSON extraction (simplified)"
+                    )
+
+                # Method 2: Look for just numbers as final fallback
                 numbers = re.findall(r'-?\d+\.?\d*', response)
                 if numbers:
                     sentiment_score = max(-1.0, min(1.0, float(numbers[0])))
-                    return SentimentScore(original_text, sentiment_score, 0.3, 'claude', 0.3, "Parsed from malformed response")
-            except:
-                pass
+                    logger.info(f"Fallback extraction: using first number {sentiment_score}")
+                    return SentimentScore(
+                        text=original_text,
+                        sentiment_score=sentiment_score,
+                        data_quality=0.3,
+                        method='claude_fallback',
+                        confidence=0.3,
+                        reasoning="Number extraction fallback (simplified)"
+                    )
+
+            except Exception as fallback_error:
+                logger.error(f"All fallback methods failed: {fallback_error}")
 
             # Final fallback
-            return SentimentScore(original_text, 0.0, 0.1, 'claude', 0.1, f"Parse error: {str(e)}")
+            return SentimentScore(original_text, 0.0, 0.1, 'claude_error', 0.1, f"Parse error (simplified): {str(e)}")
 
     def _calculate_financial_weight(self, text: str) -> float:
         """
