@@ -899,15 +899,26 @@ def get_data_source_status():
                 return {'status': '🔴 No Data', 'days_old': 999}
 
             try:
-                # Parse timestamp
+                # Parse timestamp - handle both ISO and space-separated formats
                 if 'T' in last_update_str:
                     last_update = datetime.strptime(last_update_str.split('.')[0], '%Y-%m-%dT%H:%M:%S')
+                elif ':' in last_update_str:
+                    # Handle full datetime with time
+                    last_update = datetime.strptime(last_update_str, '%Y-%m-%d %H:%M:%S')
                 else:
+                    # Handle date-only
                     last_update = datetime.strptime(last_update_str, '%Y-%m-%d')
 
-                days_old = (datetime.now() - last_update).days
+                # Calculate age - handle negative values (future dates due to timezone)
+                time_diff = datetime.now() - last_update
+                days_old = max(0, time_diff.days)  # Ensure non-negative
+                hours_old = time_diff.total_seconds() / 3600
 
-                if days_old == 0:
+                # More granular freshness for recent updates
+                if abs(hours_old) < 1:  # Within 1 hour (including future)
+                    status = '🟢 Fresh'
+                    days_old = 0
+                elif days_old == 0:
                     status = '🟢 Fresh'
                 elif days_old <= 7:
                     status = '🟡 Recent'
@@ -997,7 +1008,7 @@ def run_data_refresh(data_types: List[str], symbols: Optional[List[str]] = None,
             conn = sqlite3.connect('data/stock_data.db')
             symbol_query = "SELECT DISTINCT symbol FROM stocks ORDER BY symbol"
             symbols_df = pd.read_sql_query(symbol_query, conn)
-            symbols = symbols_df['symbol'].tolist()[:10]  # Limit to 10 for demo
+            symbols = symbols_df['symbol'].tolist()  # Use all stocks for production
             conn.close()
 
         results = {}
@@ -1049,35 +1060,30 @@ def show_data_management():
         col1, col2, col3, col4, col5 = st.columns(5)
 
         status_items = list(status_data.items())
-        for i, (source, last_updated) in enumerate(status_items):
+        for i, (source, data) in enumerate(status_items):
             col = [col1, col2, col3, col4, col5][i % 5]
             with col:
-                # Determine status color
-                if last_updated == 'Never':
-                    status_color = "🔴"
-                    status_text = "Never"
+                # Use the pre-calculated status from the function
+                status_icon = data['status']
+                count = data['count']
+                days_old = data['days_old']
+                last_update = data['last_update']
+
+                # Format display text
+                if days_old == 0:
+                    status_text = "Today"
+                elif days_old == 1:
+                    status_text = "1 day ago"
+                elif days_old < 999:
+                    status_text = f"{days_old} days ago"
                 else:
-                    # Check if data is recent (within last 7 days)
-                    try:
-                        last_date = datetime.fromisoformat(last_updated.replace('Z', '+00:00'))
-                        days_old = (datetime.now() - last_date.replace(tzinfo=None)).days
-                        if days_old <= 1:
-                            status_color = "🟢"
-                            status_text = f"{days_old}d ago"
-                        elif days_old <= 7:
-                            status_color = "🟡"
-                            status_text = f"{days_old}d ago"
-                        else:
-                            status_color = "🔴"
-                            status_text = f"{days_old}d ago"
-                    except:
-                        status_color = "🟡"
-                        status_text = "Unknown"
+                    status_text = "Never"
 
                 st.metric(
-                    label=f"{status_color} {source}",
-                    value=status_text,
-                    help=f"Last updated: {last_updated}"
+                    label=f"{status_icon.split()[0]} {source}",
+                    value=f"{count:,} records",
+                    delta=status_text,
+                    help=f"Last updated: {last_update}"
                 )
 
     # Data Refresh Controls
@@ -1123,7 +1129,7 @@ def show_data_management():
         st.markdown("**Quick Actions:**")
 
         # Quick refresh buttons
-        if st.button("🚀 Quick Refresh", help="Refresh fundamentals and prices for top 10 stocks"):
+        if st.button("🚀 Quick Refresh", help="Refresh fundamentals and prices for all stocks"):
             data_types = ['fundamentals', 'prices']
 
             # Progress tracking
@@ -1145,11 +1151,36 @@ def show_data_management():
         if st.button("🔄 Refresh Metrics", help="Recalculate composite scores"):
             with st.spinner("Recalculating metrics..."):
                 try:
-                    # This would call the analytics update utility
-                    st.success("✅ Metrics recalculated!")
-                    st.rerun()  # Refresh the page to show updated data
+                    # Import and call the analytics update utility
+                    from utilities.update_analytics import update_analytics
+                    import logging
+
+                    # Create a simple logger for the utility
+                    logger = logging.getLogger('dashboard_metrics')
+                    logger.setLevel(logging.INFO)
+
+                    # Create handler if it doesn't exist
+                    if not logger.handlers:
+                        handler = logging.StreamHandler()
+                        formatter = logging.Formatter('%(message)s')
+                        handler.setFormatter(formatter)
+                        logger.addHandler(handler)
+
+                    # Call with force recalculate to ensure fresh calculations
+                    success = update_analytics(symbols=None, force_recalculate=True, batch_size=50, logger=logger)
+
+                    if success:
+                        st.success("✅ Metrics recalculated successfully!")
+                        st.info("📊 All composite scores have been updated with latest data")
+                    else:
+                        st.warning("⚠️ Metrics calculation completed with some issues")
+
+                    # Refresh the page to show updated data
+                    time.sleep(1)  # Brief pause to ensure database writes complete
+                    st.rerun()
                 except Exception as e:
                     st.error(f"❌ Failed to recalculate metrics: {e}")
+                    st.error("💡 Try running: python utilities/update_analytics.py")
 
     # Manual refresh section
     st.markdown("---")
