@@ -29,39 +29,40 @@ StockAnalyzer Pro uses a weighted 4-component approach:
 - 503 S&P 500 stocks tracked
 - 993 fundamental records with financial metrics
 - 125,756 price data points for technical analysis
-- 17,497 news articles for sentiment analysis
-- 1,464 Reddit posts collected
+- 17,497 news articles with sentiment scores
+- 1,464 Reddit posts with sentiment analysis
+- Batch processing tables for tracking API operations
 
 **Calculation Engines:**
-- All 4 component calculators functional
-- Composite scoring system operational
-- Sector adjustments and fallback calculations
-- 896 stocks with complete calculated metrics
+- All 4 component calculators fully functional
+- Unified bulk sentiment processing via Anthropic API
+- Composite scoring with 40/25/20/15 weighting
+- 488+ stocks with complete calculated metrics
 
 **User Interface:**
-- `analytics_dashboard.py` - Simple, working dashboard with weight customization
-- Interactive visualizations and stock rankings
-- Methodology guide and metric explanations
+- `analytics_dashboard.py` - Professional dashboard with 3-step workflow
+- Clean data management: Collect → Process → Calculate
+- Interactive visualizations and real-time batch monitoring
+- Comprehensive error handling and status tracking
 
 **Utilities:**
 - Smart data refresh with S&P 500 change detection
 - Database backup and restore functionality
 - Analytics recalculation tools
 
-### 🚀 Recent Major Enhancements
+### 🚀 Recent Major Enhancements (September 29, 2025)
 
-**Sentiment Analysis Revolution:** ✅ **COMPLETED**
-- ✅ **Fixed Critical Bug**: News sentiment was hardcoded to 0.0 - now properly calculated
-- ✅ **Claude LLM Integration**: Superior financial sentiment analysis for Reddit posts
-- ✅ **Bulk Processing**: Anthropic's Message Batches API for 50% cost savings + 6x speed improvement
-- ✅ **Enhanced JSON Parsing**: Robust handling of truncated Claude responses
-- ✅ **Automatic Fallback**: Falls back to TextBlob + VADER when LLM unavailable
+**Unified Bulk Processing:** ✅ **IMPLEMENTED**
+- ✅ **Batch API Integration**: Anthropic Message Batches for efficient processing
+- ✅ **Database Tracking**: New batch_mapping table for robust record tracking
+- ✅ **Direct Updates**: Bypasses temp tables for immediate database updates
+- ✅ **Cost Optimization**: 50% reduction in API costs through batching
 
-**Dashboard Improvements:** ✅ **COMPLETED**
-- ✅ **Fixed Metrics Refresh**: Now shows partial success instead of complete failure
-- ✅ **Enhanced Error Handling**: Comprehensive feedback for debugging
-- ✅ **Real-time Debugging**: Terminal output integration for transparency
-- ✅ **Eliminated UI Bugs**: Fixed nested expander errors and display issues
+**Dashboard Reorganization:** ✅ **COMPLETED**
+- ✅ **3-Step Workflow**: Clear progression from collection to calculation
+- ✅ **Professional UI**: Removed animations, fixed button layouts
+- ✅ **Batch Monitoring**: Real-time status tracking without console access
+- ✅ **Error Recovery**: Graceful handling of partial failures
 
 **Performance Gains:**
 - **News Sentiment**: 0% → 100% coverage (fixed hardcoded bug)
@@ -69,12 +70,17 @@ StockAnalyzer Pro uses a weighted 4-component approach:
 - **Cost Efficiency**: 50% reduction in sentiment analysis costs
 - **Reliability**: Robust error handling and graceful degradation
 
-### 🚧 Future Improvements
+### 🚧 Next Phase Priorities
 
 **Dashboard Consolidation:**
-- Streamline multiple dashboard implementations
-- Enhanced data management interface
-- Advanced portfolio analysis features
+- Merge remaining features into single dashboard
+- Archive legacy streamlit_app.py
+- Update all launchers and documentation
+
+**Performance Optimization:**
+- Scale to 1000+ stocks efficiently
+- Implement caching strategies
+- Add async processing for UI responsiveness
 
 ## 🚀 Quick Start
 
@@ -98,21 +104,22 @@ NEWS_API_KEY=your_claude_api_key_here
 
 **Note:** System automatically falls back to traditional sentiment analysis if Claude API unavailable.
 
-### Launch Working Dashboard
+### Launch Dashboard
 ```bash
-# Simple dashboard with working features
+# Main dashboard with 3-step workflow
 streamlit run analytics_dashboard.py
 ```
 
 This provides:
-- Stock analysis for 896 S&P 500 companies
-- Interactive weight adjustment (40/25/20/15 customizable)
-- Professional visualizations and rankings
-- Working news sentiment analysis
+- **Complete 3-Step Workflow**: Collect → Process → Calculate
+- **488+ S&P 500 stocks** with composite rankings
+- **Interactive weight adjustment** (40/25/20/15 customizable)
+- **Batch sentiment processing** with real-time monitoring
+- **Professional interface** with comprehensive error handling
 
-### Alternative Launch (Advanced Dashboard - Has Issues)
+### Alternative Dashboard (Legacy - Not Recommended)
 ```bash
-# Advanced dashboard with data management (needs fixes)
+# Legacy dashboard - being phased out
 streamlit run streamlit_app.py
 ```
 
