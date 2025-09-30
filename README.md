@@ -47,10 +47,11 @@ StockAnalyzer Pro uses a weighted 4-component approach:
 
 **Utilities:**
 - Smart data refresh with S&P 500 change detection
+- CLI batch processing for sentiment analysis (NEW - Sept 30)
 - Database backup and restore functionality
 - Analytics recalculation tools
 
-### 🚀 Recent Major Enhancements (September 29, 2025)
+### 🚀 Recent Major Enhancements (September 30, 2025)
 
 **Unified Bulk Processing:** ✅ **IMPLEMENTED**
 - ✅ **Batch API Integration**: Anthropic Message Batches for efficient processing
@@ -69,6 +70,11 @@ StockAnalyzer Pro uses a weighted 4-component approach:
 - **Processing Speed**: 6x faster with bulk API (6+ hours → <1 hour for S&P 500)
 - **Cost Efficiency**: 50% reduction in sentiment analysis costs
 - **Reliability**: Robust error handling and graceful degradation
+
+**Critical Bug Fixes (Sept 30):**
+- ✅ **Database Query Fix**: Corrected JOIN conditions in `get_unprocessed_items_for_batch()`
+- ✅ **Efficiency Fix**: Temp queue now filters already-scored items
+- ✅ **CLI Enhancement**: Added `--process-sentiment`, `--finalize-batch`, and `--poll` flags
 
 ### 🚧 Next Phase Priorities
 
@@ -144,6 +150,11 @@ python utilities/backup_database.py
 
 # Smart data refresh (checks for stale data)
 python utilities/smart_refresh.py --symbols AAPL --data-types fundamentals
+
+# CLI batch processing (NEW - Sept 30)
+python utilities/smart_refresh.py --process-sentiment         # Submit batch
+python utilities/smart_refresh.py --process-sentiment --poll  # Submit and wait
+python utilities/smart_refresh.py --finalize-batch <batch_id> # Finalize batch
 
 # Recalculate all metrics
 python utilities/update_analytics.py

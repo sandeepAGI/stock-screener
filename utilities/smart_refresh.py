@@ -12,11 +12,14 @@ Key Features:
 
 Usage:
     python utilities/smart_refresh.py                              # Smart refresh all stale data
-    python utilities/smart_refresh.py --symbols AAPL,MSFT         # Refresh specific stocks  
+    python utilities/smart_refresh.py --symbols AAPL,MSFT         # Refresh specific stocks
     python utilities/smart_refresh.py --data-types sentiment       # Refresh Reddit sentiment only
     python utilities/smart_refresh.py --data-types fundamentals    # Refresh specific data types
     python utilities/smart_refresh.py --check-sp500               # Check S&P 500 changes only
     python utilities/smart_refresh.py --max-age-days 7            # Custom staleness threshold
+    python utilities/smart_refresh.py --process-sentiment         # Submit batch for unprocessed items
+    python utilities/smart_refresh.py --finalize-batch <id>       # Retrieve and apply batch results
+    python utilities/smart_refresh.py --process-sentiment --poll  # Submit and wait for completion
 """
 
 import sys
@@ -36,6 +39,7 @@ from src.data.collectors import DataCollectionOrchestrator
 from src.data.database import DatabaseManager
 from src.data.database_operations import DatabaseOperationsManager
 from src.data.stock_universe import StockUniverseManager
+from src.data.unified_bulk_processor import UnifiedBulkProcessor
 
 def setup_logging():
     """Setup logging exactly like baseline script"""
@@ -384,7 +388,10 @@ def main():
     parser.add_argument('--check-sp500', action='store_true', help='Only check S&P 500 changes')
     parser.add_argument('--force', action='store_true', help='Force refresh regardless of staleness')
     parser.add_argument('--quiet', action='store_true', help='Suppress interactive prompts')
-    
+    parser.add_argument('--process-sentiment', action='store_true', help='Submit batch for unprocessed sentiment items')
+    parser.add_argument('--finalize-batch', type=str, metavar='BATCH_ID', help='Retrieve and apply results for batch ID')
+    parser.add_argument('--poll', action='store_true', help='Poll batch until completion (use with --process-sentiment)')
+
     args = parser.parse_args()
     logger = setup_logging()
     
@@ -422,6 +429,70 @@ def main():
         if args.check_sp500:
             print("\n📊 S&P 500 Analysis Complete")
             return 0
+
+        # Handle batch processing operations
+        if args.finalize_batch:
+            print(f"\n🎯 Finalizing batch: {args.finalize_batch}")
+            bulk_processor = UnifiedBulkProcessor(db_manager)
+            success = bulk_processor.retrieve_and_apply_results(args.finalize_batch)
+            if success:
+                print("✅ Batch results retrieved and applied successfully")
+                return 0
+            else:
+                print("❌ Failed to finalize batch")
+                return 1
+
+        if args.process_sentiment:
+            print("\n🔄 Processing sentiment batch...")
+            bulk_processor = UnifiedBulkProcessor(db_manager)
+
+            # Get unprocessed items
+            unprocessed_items = db_manager.get_unprocessed_items_for_batch()
+            if not unprocessed_items:
+                print("✅ No unprocessed sentiment items found")
+                return 0
+
+            print(f"📊 Found {len(unprocessed_items)} items needing sentiment analysis")
+
+            # Submit batch
+            batch_id = bulk_processor.submit_bulk_batch(unprocessed_items)
+            if not batch_id:
+                print("❌ Failed to submit batch")
+                return 1
+
+            print(f"✅ Batch submitted: {batch_id}")
+
+            # Poll if requested
+            if args.poll:
+                print("\n⏳ Polling batch status (Ctrl+C to stop)...")
+                try:
+                    while True:
+                        status = bulk_processor.check_batch_status(batch_id)
+                        if not status:
+                            print("❌ Failed to check batch status")
+                            return 1
+
+                        print(f"   Status: {status['status']} | Processed: {status.get('request_counts', {}).get('succeeded', 0)}/{status.get('request_counts', {}).get('total', 0)}")
+
+                        if status['status'] in ['ended', 'expired', 'canceled', 'failed']:
+                            print(f"\n🎯 Batch {status['status']}. Retrieving results...")
+                            success = bulk_processor.retrieve_and_apply_results(batch_id)
+                            if success:
+                                print("✅ Results applied successfully")
+                                return 0
+                            else:
+                                print("❌ Failed to apply results")
+                                return 1
+
+                        time.sleep(30)  # Check every 30 seconds
+                except KeyboardInterrupt:
+                    print(f"\n⚠️  Polling interrupted. Batch {batch_id} is still processing.")
+                    print(f"   Use: python utilities/smart_refresh.py --finalize-batch {batch_id}")
+                    return 0
+            else:
+                print(f"\n💡 To finalize later, run:")
+                print(f"   python utilities/smart_refresh.py --finalize-batch {batch_id}")
+                return 0
         
         # Determine target symbols
         if args.symbols:

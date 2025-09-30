@@ -1,9 +1,9 @@
 # StockAnalyzer Pro - Current Status & Development Guide
-**Last Updated:** September 29, 2025
+**Last Updated:** September 30, 2025
 **Branch:** main
 **Purpose:** Consolidated documentation for current system state and development priorities
 
-## 🎯 RECENT ACCOMPLISHMENTS (September 29, 2025)
+## 🎯 RECENT ACCOMPLISHMENTS (September 30, 2025)
 
 ### ✅ MAJOR MILESTONES COMPLETED:
 1. **Unified Bulk Sentiment Processing** - ✅ **IMPLEMENTED**: Anthropic Message Batches API with batch_mapping table
@@ -11,10 +11,13 @@
 3. **Database Enhancements** - ✅ **ADDED**: batch_mapping and batches tables with robust tracking
 4. **Datetime Handling** - ✅ **FIXED**: Microsecond parsing issues resolved system-wide
 5. **Professional Interface** - ✅ **CLEANED**: Removed balloon animations, fixed button layouts
+6. **Critical Bug Fixes (Sept 30)** - ✅ **RESOLVED**: Fixed JOIN bug and temp queue filtering issues
+7. **CLI Batch Processing (Sept 30)** - ✅ **ADDED**: Full batch workflow support in smart_refresh.py
 
 ### 🚧 REMAINING PRIORITIES:
 1. **Dashboard Consolidation** - Still have streamlit_app.py and analytics_dashboard.py
 2. **Performance Optimization** - Further optimize batch processing for scale
+3. **Testing Enhancement** - Add unit tests for batch processing components
 
 ## 📊 SYSTEM STATUS OVERVIEW
 
@@ -166,7 +169,40 @@ Database (with sentiment) ─→ Calculators ─→ Composite Scores (40/25/20/1
 - `reddit_posts` - Reddit posts with sentiment scores
 - `calculated_metrics` - Final composite scores
 - `batches` - Batch processing status tracking
-- `batch_mapping` - Maps batch IDs to record IDs
+- `batch_mapping` - Maps batch IDs to record IDs (PRIMARY batch tracking method)
+- `temp_sentiment_queue` - Alternative/debug path for sentiment processing
+
+## 🐛 RECENT BUG FIXES (September 30, 2025)
+
+### Critical Database Query Fix
+**Issue #1: JOIN Bug in Batch Item Selection**
+- **Problem:** `get_unprocessed_items_for_batch()` used incorrect column name `record_type` instead of `table_name`
+- **Impact:** Could cause duplicate processing or missed items in batch submissions
+- **Fix:** Corrected JOIN conditions in both news and Reddit queries (database.py:1349, 1374)
+- **Status:** ✅ RESOLVED
+
+### Temp Queue Efficiency Fix
+**Issue #2: Unnecessary Reprocessing**
+- **Problem:** `populate_sentiment_queue_from_existing_data()` enqueued all items, even those already scored
+- **Impact:** Wasted API calls and processing time
+- **Fix:** Added `WHERE (sentiment_score IS NULL OR sentiment_score = 0.0)` filters to both queries (database.py:1066, 1083)
+- **Status:** ✅ RESOLVED
+
+### CLI Enhancement
+**Issue #3: Missing CLI Batch Processing**
+- **Problem:** `smart_refresh.py` couldn't submit or finalize batches, forcing users to use dashboard
+- **Impact:** Reddit sentiment remained at 0% when using CLI-only workflows
+- **Fix:** Added three new CLI flags:
+  - `--process-sentiment`: Submit batch from unprocessed items
+  - `--finalize-batch <id>`: Retrieve and apply batch results
+  - `--poll`: Monitor batch until completion
+- **Status:** ✅ IMPLEMENTED
+
+### Dual-Path Architecture Clarification
+**Batch Processing Paths:**
+- **Primary Path:** Direct updates via `batch_mapping` table (used by dashboard and CLI)
+- **Secondary Path:** `temp_sentiment_queue` (for debugging and alternative workflows)
+- Both paths are valid and serve different use cases
 
 ## 🔧 NEXT PHASE PRIORITIES
 
@@ -180,14 +216,21 @@ Database (with sentiment) ─→ Calculators ─→ Composite Scores (40/25/20/1
 2. Archive streamlit_app.py to reduce confusion
 3. Update all launchers to use single dashboard
 
-### Phase 2: Performance & Scale Optimization
+### Phase 2: Testing & Quality Assurance
+**Goals:** Ensure system reliability and correctness
+- Unit tests for `get_unprocessed_items_for_batch()` (no duplicates, correct filtering)
+- Unit tests for `populate_sentiment_queue_from_existing_data()` (exclusion of scored items)
+- Integration tests for batch lifecycle (submit → monitor → finalize)
+- End-to-end testing of CLI batch processing workflow
+
+### Phase 3: Performance & Scale Optimization
 **Goals:** Handle larger datasets efficiently
 - Optimize batch processing for 1000+ stocks
 - Implement caching for frequently accessed data
 - Add progress persistence for long-running operations
 - Consider async processing for UI responsiveness
 
-### Phase 3: Enhanced Analytics Features
+### Phase 4: Enhanced Analytics Features
 **New Capabilities:**
 - Portfolio tracking and analysis
 - Custom stock universe creation
@@ -202,12 +245,17 @@ Database (with sentiment) ─→ Calculators ─→ Composite Scores (40/25/20/1
 # Database status
 sqlite3 data/stock_data.db "SELECT COUNT(*) FROM reddit_posts WHERE sentiment_score != 0.0"
 
-# Test refresh
+# Test data refresh
 python utilities/smart_refresh.py --symbols AAPL --data-types sentiment --force --quiet
+
+# Test batch processing (NEW - Sept 30)
+python utilities/smart_refresh.py --process-sentiment         # Submit batch
+python utilities/smart_refresh.py --process-sentiment --poll  # Submit and wait
+python utilities/smart_refresh.py --finalize-batch <batch_id> # Finalize specific batch
 
 # Launch dashboards
 streamlit run streamlit_app.py  # Port 8501
-streamlit run analytics_dashboard.py  # Different port
+streamlit run analytics_dashboard.py  # Different port (PRIMARY)
 ```
 
 ### Reddit Sentiment Verification:
