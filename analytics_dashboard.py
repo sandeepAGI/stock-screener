@@ -1931,8 +1931,6 @@ def main():
 
         # Create enhanced histogram with stock ticker hover data
         # First, create bins and aggregate stock symbols per bin
-        import numpy as np
-
         scores = main_df[score_column].values
         n_bins = 20
         bin_edges = np.linspace(scores.min(), scores.max(), n_bins + 1)
