@@ -1348,7 +1348,7 @@ class DatabaseManager:
                 n.summary,
                 'news' as content_type
             FROM news_articles n
-            LEFT JOIN batch_mapping bm ON bm.table_name = 'news_articles' AND bm.record_id = n.id
+            LEFT JOIN batch_mapping bm ON bm.record_type = 'news_articles' AND bm.record_id = n.id
             WHERE (n.sentiment_score IS NULL OR n.sentiment_score = 0.0)
             AND bm.id IS NULL  -- Not already in a batch
             ORDER BY n.symbol, n.id
@@ -1373,7 +1373,7 @@ class DatabaseManager:
                 r.content,
                 'reddit' as content_type
             FROM reddit_posts r
-            LEFT JOIN batch_mapping bm ON bm.table_name = 'reddit_posts' AND bm.record_id = r.id
+            LEFT JOIN batch_mapping bm ON bm.record_type = 'reddit_posts' AND bm.record_id = r.id
             WHERE (r.sentiment_score IS NULL OR r.sentiment_score = 0.0)
             AND bm.id IS NULL  -- Not already in a batch
             ORDER BY r.symbol, r.id

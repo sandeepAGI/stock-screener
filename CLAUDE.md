@@ -1,5 +1,5 @@
 # StockAnalyzer Pro - Current Status & Development Guide
-**Last Updated:** September 30, 2025
+**Last Updated:** October 20, 2025
 **Branch:** main
 **Purpose:** Consolidated documentation for current system state and development priorities
 
@@ -172,24 +172,32 @@ Database (with sentiment) ─→ Calculators ─→ Composite Scores (40/25/20/1
 - `batch_mapping` - Maps batch IDs to record IDs (PRIMARY batch tracking method)
 - `temp_sentiment_queue` - Alternative/debug path for sentiment processing
 
-## 🐛 RECENT BUG FIXES (September 30, 2025)
+## 🐛 RECENT BUG FIXES
 
-### Critical Database Query Fix
-**Issue #1: JOIN Bug in Batch Item Selection**
-- **Problem:** `get_unprocessed_items_for_batch()` used incorrect column name `record_type` instead of `table_name`
+### Critical Database Schema Mismatch Fix (October 20, 2025)
+**Issue #1: Column Name Mismatch in Batch Queries**
+- **Problem:** `get_unprocessed_items_for_batch()` used `bm.table_name` but schema has `bm.record_type`
+- **Impact:** Batch submission failed with error "no such column: bm.table_name"
+- **Fix:** Corrected JOIN conditions to use `bm.record_type` in both queries (database.py:1351, 1376)
+- **Status:** ✅ RESOLVED
+
+### Previous Fixes (September 30, 2025)
+
+**Issue #2: JOIN Bug in Batch Item Selection**
+- **Problem:** Earlier incorrect fix attempted to use `table_name` instead of correct `record_type`
 - **Impact:** Could cause duplicate processing or missed items in batch submissions
-- **Fix:** Corrected JOIN conditions in both news and Reddit queries (database.py:1349, 1374)
+- **Fix:** Properly aligned with database schema using `record_type`
 - **Status:** ✅ RESOLVED
 
 ### Temp Queue Efficiency Fix
-**Issue #2: Unnecessary Reprocessing**
+**Issue #3: Unnecessary Reprocessing**
 - **Problem:** `populate_sentiment_queue_from_existing_data()` enqueued all items, even those already scored
 - **Impact:** Wasted API calls and processing time
 - **Fix:** Added `WHERE (sentiment_score IS NULL OR sentiment_score = 0.0)` filters to both queries (database.py:1066, 1083)
 - **Status:** ✅ RESOLVED
 
 ### CLI Enhancement
-**Issue #3: Missing CLI Batch Processing**
+**Issue #4: Missing CLI Batch Processing**
 - **Problem:** `smart_refresh.py` couldn't submit or finalize batches, forcing users to use dashboard
 - **Impact:** Reddit sentiment remained at 0% when using CLI-only workflows
 - **Fix:** Added three new CLI flags:
