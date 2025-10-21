@@ -1929,23 +1929,147 @@ def main():
         # Analytics visualizations
         st.subheader("📊 Distribution Analysis")
 
-        # Create histograms and box plots
-        fig_hist = px.histogram(
-            main_df,
-            x=score_column,
-            nbins=20,
-            title="Score Distribution",
-            labels={score_column: "Composite Score", 'count': 'Number of Stocks'}
-        )
-        fig_hist.update_layout(font=dict(family='Montserrat'))
+        # Create enhanced histogram with stock ticker hover data
+        # First, create bins and aggregate stock symbols per bin
+        import numpy as np
 
-        fig_box = px.box(
-            main_df,
-            y=score_column,
-            title="Score Distribution Box Plot",
-            labels={score_column: "Composite Score"}
+        scores = main_df[score_column].values
+        n_bins = 20
+        bin_edges = np.linspace(scores.min(), scores.max(), n_bins + 1)
+
+        # Assign each stock to a bin
+        bin_indices = np.digitize(scores, bin_edges) - 1
+        bin_indices = np.clip(bin_indices, 0, n_bins - 1)
+
+        # Aggregate stocks by bin
+        bin_data = []
+        for i in range(n_bins):
+            mask = bin_indices == i
+            stocks_in_bin = main_df[mask]['symbol'].tolist()
+            count = len(stocks_in_bin)
+            bin_center = (bin_edges[i] + bin_edges[i + 1]) / 2
+            bin_range = f"{bin_edges[i]:.1f}-{bin_edges[i+1]:.1f}"
+
+            # Format stock list for hover (max 20 per line for readability)
+            if len(stocks_in_bin) > 0:
+                stock_lines = []
+                for j in range(0, len(stocks_in_bin), 20):
+                    stock_lines.append(', '.join(stocks_in_bin[j:j+20]))
+                stocks_text = '<br>'.join(stock_lines)
+            else:
+                stocks_text = "None"
+
+            bin_data.append({
+                'bin_center': bin_center,
+                'bin_range': bin_range,
+                'count': count,
+                'stocks': stocks_text
+            })
+
+        bin_df = pd.DataFrame(bin_data)
+
+        # Create histogram using bar chart for better control
+        fig_hist = go.Figure()
+        fig_hist.add_trace(go.Bar(
+            x=bin_df['bin_center'],
+            y=bin_df['count'],
+            width=(bin_edges[1] - bin_edges[0]) * 0.9,
+            hovertemplate='<b>Score Range:</b> %{customdata[0]}<br>' +
+                          '<b>Number of Stocks:</b> %{y}<br>' +
+                          '<b>Tickers:</b><br>%{customdata[1]}<extra></extra>',
+            customdata=bin_df[['bin_range', 'stocks']].values,
+            marker_color='#636EFA'
+        ))
+
+        fig_hist.update_layout(
+            title="Score Distribution",
+            xaxis_title="Composite Score",
+            yaxis_title="Number of Stocks",
+            font=dict(family='Montserrat'),
+            hovermode='closest'
         )
-        fig_box.update_layout(font=dict(family='Montserrat'))
+
+        # Create enhanced box plot with individual stock points and outlier identification
+        # Calculate quartiles and IQR for outlier detection
+        Q1 = main_df[score_column].quantile(0.25)
+        Q3 = main_df[score_column].quantile(0.75)
+        IQR = Q3 - Q1
+        lower_fence = Q1 - 1.5 * IQR
+        upper_fence = Q3 + 1.5 * IQR
+
+        # Identify outliers
+        main_df['is_outlier'] = (main_df[score_column] < lower_fence) | (main_df[score_column] > upper_fence)
+
+        fig_box = go.Figure()
+
+        # Add box plot without outliers shown
+        fig_box.add_trace(go.Box(
+            y=main_df[score_column],
+            name="",
+            boxpoints=False,  # We'll add points manually
+            marker_color='#636EFA',
+            showlegend=False
+        ))
+
+        # Add all data points with enhanced hover info
+        # Outliers get different styling
+        outliers = main_df[main_df['is_outlier']]
+        non_outliers = main_df[~main_df['is_outlier']]
+
+        # Add non-outlier points (smaller, more transparent)
+        if len(non_outliers) > 0:
+            fig_box.add_trace(go.Scatter(
+                x=[0] * len(non_outliers),
+                y=non_outliers[score_column],
+                mode='markers',
+                name='Normal Range',
+                marker=dict(
+                    size=6,
+                    color='rgba(99, 110, 250, 0.3)',
+                    line=dict(width=1, color='rgba(99, 110, 250, 0.5)')
+                ),
+                hovertemplate='<b>%{customdata[0]}</b><br>' +
+                              'Score: %{y:.2f}<br>' +
+                              'Company: %{customdata[1]}<extra></extra>',
+                customdata=non_outliers[['symbol', 'company_name']].values,
+                showlegend=True
+            ))
+
+        # Add outlier points (larger, highlighted)
+        if len(outliers) > 0:
+            fig_box.add_trace(go.Scatter(
+                x=[0] * len(outliers),
+                y=outliers[score_column],
+                mode='markers',
+                name='Outliers',
+                marker=dict(
+                    size=10,
+                    color='#FF6B6B',
+                    symbol='diamond',
+                    line=dict(width=2, color='#C92A2A')
+                ),
+                hovertemplate='<b>%{customdata[0]}</b> (OUTLIER)<br>' +
+                              'Score: %{y:.2f}<br>' +
+                              'Company: %{customdata[1]}<extra></extra>',
+                customdata=outliers[['symbol', 'company_name']].values,
+                showlegend=True
+            ))
+
+        fig_box.update_layout(
+            title="Score Distribution Box Plot",
+            yaxis_title="Composite Score",
+            xaxis=dict(showticklabels=False),
+            font=dict(family='Montserrat'),
+            hovermode='closest',
+            showlegend=True,
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1
+            )
+        )
 
         chart_col1, chart_col2 = st.columns(2)
 
