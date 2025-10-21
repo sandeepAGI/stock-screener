@@ -3,16 +3,25 @@
 **Branch:** main
 **Purpose:** Consolidated documentation for current system state and development priorities
 
-## 🎯 RECENT ACCOMPLISHMENTS (September 30, 2025)
+## 🎯 RECENT ACCOMPLISHMENTS
 
-### ✅ MAJOR MILESTONES COMPLETED:
+### ✅ LATEST UPDATES (October 20, 2025):
+1. **Interactive Chart Enhancements** - ✅ **COMPLETED**: Enhanced histogram and box plot with rich hover data
+   - Histogram bars show all stock tickers in each score range
+   - Box plot displays individual stocks with outlier highlighting
+   - Hover tooltips show ticker, company name, and scores
+2. **Database Schema Fix** - ✅ **RESOLVED**: Corrected batch_mapping column name (table_name → record_type)
+   - Fixed "no such column: bm.table_name" error
+   - Step 2 (Process Sentiment) now works correctly in dashboard
+
+### ✅ MAJOR MILESTONES (September 30, 2025):
 1. **Unified Bulk Sentiment Processing** - ✅ **IMPLEMENTED**: Anthropic Message Batches API with batch_mapping table
 2. **Dashboard UI Reorganization** - ✅ **COMPLETED**: Clean 3-step workflow (Collect → Process → Calculate)
 3. **Database Enhancements** - ✅ **ADDED**: batch_mapping and batches tables with robust tracking
 4. **Datetime Handling** - ✅ **FIXED**: Microsecond parsing issues resolved system-wide
 5. **Professional Interface** - ✅ **CLEANED**: Removed balloon animations, fixed button layouts
-6. **Critical Bug Fixes (Sept 30)** - ✅ **RESOLVED**: Fixed JOIN bug and temp queue filtering issues
-7. **CLI Batch Processing (Sept 30)** - ✅ **ADDED**: Full batch workflow support in smart_refresh.py
+6. **Critical Bug Fixes** - ✅ **RESOLVED**: Fixed JOIN bug and temp queue filtering issues
+7. **CLI Batch Processing** - ✅ **ADDED**: Full batch workflow support in smart_refresh.py
 
 ### 🚧 REMAINING PRIORITIES:
 1. **Dashboard Consolidation** - Still have streamlit_app.py and analytics_dashboard.py
@@ -108,6 +117,18 @@ bulk_results = bulk_processor.process_bulk_sentiment(articles)
 ```
 
 ### 📈 DASHBOARD IMPROVEMENTS
+
+#### Interactive Visualizations (October 20, 2025)
+- **Score Distribution Histogram:**
+  - Hover over bars to see all stock tickers in that score range
+  - Displays score range, count, and formatted ticker list (20 per line)
+  - Custom binning with go.Bar for precise control
+- **Box Plot with Outlier Detection:**
+  - Individual data points overlaid on traditional box plot
+  - Outliers highlighted with red diamond markers (1.5 × IQR rule)
+  - Normal range stocks shown as blue circles
+  - Hover shows ticker, company name, and exact score
+  - Legend distinguishes between normal range and outliers
 
 #### Metrics Refresh Enhancement
 - **Fixed:** Partial success detection (function returns False but stocks calculated)

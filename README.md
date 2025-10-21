@@ -42,8 +42,9 @@ StockAnalyzer Pro uses a weighted 4-component approach:
 **User Interface:**
 - `analytics_dashboard.py` - Professional dashboard with 3-step workflow
 - Clean data management: Collect → Process → Calculate
-- Interactive visualizations and real-time batch monitoring
-- Comprehensive error handling and status tracking
+- Enhanced interactive visualizations with stock ticker hover data
+- Box plot with automatic outlier detection and highlighting
+- Real-time batch monitoring and comprehensive error handling
 
 **Utilities:**
 - Smart data refresh with S&P 500 change detection
@@ -51,7 +52,15 @@ StockAnalyzer Pro uses a weighted 4-component approach:
 - Database backup and restore functionality
 - Analytics recalculation tools
 
-### 🚀 Recent Major Enhancements (September 30, 2025)
+### 🚀 Recent Major Enhancements
+
+**October 20, 2025 - Interactive Visualization Upgrade:**
+- ✅ **Histogram Enhancement**: Hover over distribution bars to see all stock tickers in each score range
+- ✅ **Box Plot Upgrade**: Individual data points with outlier highlighting (1.5 × IQR detection)
+- ✅ **Rich Tooltips**: Ticker symbols, company names, and exact scores on hover
+- ✅ **Database Fix**: Corrected batch_mapping schema issue (table_name → record_type)
+
+**September 30, 2025 - Bulk Processing & Dashboard:**
 
 **Unified Bulk Processing:** ✅ **IMPLEMENTED**
 - ✅ **Batch API Integration**: Anthropic Message Batches for efficient processing
