@@ -1285,6 +1285,26 @@ def show_data_management():
         elif total_unprocessed > 0:
             st.markdown("### 🚀 Submit New Batch")
 
+            # Check for recently submitted batches (within last 5 minutes)
+            recent_batch_warning = False
+            if db.connect():
+                cursor = db.connection.cursor()
+                cursor.execute("""
+                    SELECT batch_id, COUNT(*) as count, MAX(created_at) as recent
+                    FROM batch_mapping
+                    WHERE created_at > datetime('now', '-5 minutes')
+                    GROUP BY batch_id
+                """)
+                recent_batches = cursor.fetchall()
+                cursor.close()
+                db.close()
+
+                if recent_batches:
+                    recent_batch_warning = True
+                    st.warning(f"⚠️ **Recent batch detected!** A batch was submitted {recent_batches[0][2]} with {recent_batches[0][1]} items.")
+                    st.info("💡 Wait a few seconds and refresh the page to see the batch monitoring section above.")
+                    st.info("🔄 If you don't see it after refreshing, the batch may not have been stored properly.")
+
             col1, col2 = st.columns([2, 1])
 
             with col1:
@@ -1295,7 +1315,10 @@ def show_data_management():
                 st.markdown("• 🧠 **Quality:** Superior financial context understanding")
 
             with col2:
-                if st.button("🚀 Submit Batch", type="primary", help=f"Submit {total_unprocessed:,} items for sentiment analysis"):
+                button_disabled = recent_batch_warning
+                button_help = "A batch was just submitted. Refresh page to monitor it." if recent_batch_warning else f"Submit {total_unprocessed:,} items for sentiment analysis"
+
+                if st.button("🚀 Submit Batch", type="primary", help=button_help, disabled=button_disabled):
                     with st.spinner("Preparing and submitting batch..."):
                         try:
                             # Get unprocessed items
