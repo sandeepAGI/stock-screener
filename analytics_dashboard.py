@@ -1078,17 +1078,17 @@ def show_data_management():
         cursor.execute("SELECT COUNT(*) FROM reddit_posts")
         data_status["reddit_count"] = cursor.fetchone()[0]
 
-        # Get sentiment status
-        cursor.execute("SELECT COUNT(*) FROM news_articles WHERE sentiment_score IS NULL OR sentiment_score = 0.0")
+        # Get sentiment status - Only count NULL as unprocessed (0.0 is a valid neutral sentiment)
+        cursor.execute("SELECT COUNT(*) FROM news_articles WHERE sentiment_score IS NULL")
         data_status["news_no_sentiment"] = cursor.fetchone()[0]
 
-        cursor.execute("SELECT COUNT(*) FROM reddit_posts WHERE sentiment_score IS NULL OR sentiment_score = 0.0")
+        cursor.execute("SELECT COUNT(*) FROM reddit_posts WHERE sentiment_score IS NULL")
         data_status["reddit_no_sentiment"] = cursor.fetchone()[0]
 
-        cursor.execute("SELECT COUNT(*) FROM news_articles WHERE sentiment_score IS NOT NULL AND sentiment_score != 0.0")
+        cursor.execute("SELECT COUNT(*) FROM news_articles WHERE sentiment_score IS NOT NULL")
         data_status["news_with_sentiment"] = cursor.fetchone()[0]
 
-        cursor.execute("SELECT COUNT(*) FROM reddit_posts WHERE sentiment_score IS NOT NULL AND sentiment_score != 0.0")
+        cursor.execute("SELECT COUNT(*) FROM reddit_posts WHERE sentiment_score IS NOT NULL")
         data_status["reddit_with_sentiment"] = cursor.fetchone()[0]
 
         cursor.close()
@@ -1269,13 +1269,16 @@ def show_data_management():
                         if st.button("📥 Process Results", type="primary"):
                             with st.spinner("Retrieving and processing batch results..."):
                                 try:
-                                    success = bulk_processor.retrieve_and_process_batch_results(selected_batch)
-                                    if success:
-                                        st.success("✅ Results processed successfully!")
+                                    result = bulk_processor.retrieve_and_process_batch_results(selected_batch)
+                                    if result and result.get('success'):
+                                        st.success(f"✅ Results processed successfully!")
+                                        st.success(f"📊 Updated {result.get('successful_updates', 0)} items")
+                                        if result.get('failed_updates', 0) > 0:
+                                            st.warning(f"⚠️ {result.get('failed_updates')} items failed to process")
                                         st.info("➡️ **Next:** Proceed to Step 3 for final calculations")
                                         st.rerun()
                                     else:
-                                        st.error("❌ Failed to process results")
+                                        st.error(f"❌ Failed to process results: {result.get('error', 'Unknown error') if result else 'No result returned'}")
                                 except Exception as e:
                                     st.error(f"❌ Error: {str(e)}")
 
@@ -1375,13 +1378,16 @@ def show_data_management():
 
                             if status['status'] == 'ended':
                                 st.success("🎉 Batch is complete! Processing results...")
-                                success = bulk_processor.retrieve_and_process_batch_results(manual_batch_id)
-                                if success:
-                                    st.success("✅ Results processed successfully!")
+                                result = bulk_processor.retrieve_and_process_batch_results(manual_batch_id)
+                                if result and result.get('success'):
+                                    st.success(f"✅ Results processed successfully!")
+                                    st.success(f"📊 Updated {result.get('successful_updates', 0)} items")
+                                    if result.get('failed_updates', 0) > 0:
+                                        st.warning(f"⚠️ {result.get('failed_updates')} items failed to process")
                                     st.info("➡️ **Next:** Proceed to Step 3 for final calculations")
                                     st.rerun()
                                 else:
-                                    st.error("❌ Failed to process results")
+                                    st.error(f"❌ Failed to process results: {result.get('error', 'Unknown error')}")
                             else:
                                 st.warning(f"⏳ Batch is still {status['status']}. Wait until it completes before processing.")
                         else:
@@ -1453,13 +1459,16 @@ def show_data_management():
                             if st.button("📥 Process Results", key=f"process_{batch_id[:8]}", type="primary"):
                                 with st.spinner("Processing batch results..."):
                                     try:
-                                        success = bulk_processor.retrieve_and_process_batch_results(batch_id)
-                                        if success:
-                                            st.success("✅ Results processed successfully!")
+                                        result = bulk_processor.retrieve_and_process_batch_results(batch_id)
+                                        if result and result.get('success'):
+                                            st.success(f"✅ Results processed successfully!")
+                                            st.success(f"📊 Updated {result.get('successful_updates', 0)} items")
+                                            if result.get('failed_updates', 0) > 0:
+                                                st.warning(f"⚠️ {result.get('failed_updates')} items failed to process")
                                             st.info("➡️ **Next:** Proceed to Step 3 for final calculations")
                                             st.rerun()
                                         else:
-                                            st.error("❌ Failed to process results")
+                                            st.error(f"❌ Failed to process results: {result.get('error', 'Unknown error') if result else 'No result returned'}")
                                     except Exception as e:
                                         st.error(f"❌ Error: {str(e)}")
 
