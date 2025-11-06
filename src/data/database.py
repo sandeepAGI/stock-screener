@@ -1339,7 +1339,7 @@ class DatabaseManager:
 
         items = []
 
-        # Get unprocessed news articles
+        # Get unprocessed news articles (only NULL, not 0.0 which is valid neutral sentiment)
         cursor.execute("""
             SELECT
                 n.id,
@@ -1349,7 +1349,7 @@ class DatabaseManager:
                 'news' as content_type
             FROM news_articles n
             LEFT JOIN batch_mapping bm ON bm.record_type = 'news_articles' AND bm.record_id = n.id
-            WHERE (n.sentiment_score IS NULL OR n.sentiment_score = 0.0)
+            WHERE n.sentiment_score IS NULL
             AND bm.id IS NULL  -- Not already in a batch
             ORDER BY n.symbol, n.id
         """)
@@ -1364,7 +1364,7 @@ class DatabaseManager:
                 'table_name': 'news_articles'
             })
 
-        # Get unprocessed Reddit posts
+        # Get unprocessed Reddit posts (only NULL, not 0.0 which is valid neutral sentiment)
         cursor.execute("""
             SELECT
                 r.id,
@@ -1374,7 +1374,7 @@ class DatabaseManager:
                 'reddit' as content_type
             FROM reddit_posts r
             LEFT JOIN batch_mapping bm ON bm.record_type = 'reddit_posts' AND bm.record_id = r.id
-            WHERE (r.sentiment_score IS NULL OR r.sentiment_score = 0.0)
+            WHERE r.sentiment_score IS NULL
             AND bm.id IS NULL  -- Not already in a batch
             ORDER BY r.symbol, r.id
         """)
