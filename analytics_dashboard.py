@@ -1349,6 +1349,46 @@ def show_data_management():
         else:
             st.success("✅ All items have sentiment scores! No processing needed.")
 
+    # === MANUAL BATCH RECOVERY ===
+    if not active_batches and total_unprocessed > 0:
+        with st.expander("🔧 Manual Batch Recovery (Advanced)", expanded=False):
+            st.markdown("""
+            **If you submitted a batch but it's not showing above:**
+
+            This can happen if the batch was submitted through another method or if there was a database issue.
+            You can manually enter your batch ID from the Anthropic console to process results.
+            """)
+
+            manual_batch_id = st.text_input(
+                "Enter Batch ID from Anthropic Console:",
+                placeholder="msgbatch_01ABC...",
+                help="Find this in your Anthropic console under Message Batches"
+            )
+
+            if manual_batch_id and st.button("🔍 Check & Process Manual Batch", type="secondary"):
+                with st.spinner("Checking batch status..."):
+                    try:
+                        status = bulk_processor.check_batch_status(manual_batch_id)
+                        if status and status['success']:
+                            st.info(f"**Status:** {status['status']}")
+                            st.info(f"**Progress:** {status['completed_count']}/{status['submitted_count']} items")
+
+                            if status['status'] == 'ended':
+                                st.success("🎉 Batch is complete! Processing results...")
+                                success = bulk_processor.retrieve_and_process_batch_results(manual_batch_id)
+                                if success:
+                                    st.success("✅ Results processed successfully!")
+                                    st.info("➡️ **Next:** Proceed to Step 3 for final calculations")
+                                    st.rerun()
+                                else:
+                                    st.error("❌ Failed to process results")
+                            else:
+                                st.warning(f"⏳ Batch is still {status['status']}. Wait until it completes before processing.")
+                        else:
+                            st.error(f"❌ Could not find batch: {manual_batch_id}")
+                    except Exception as e:
+                        st.error(f"❌ Error: {str(e)}")
+
     # === BATCH MONITORING SECTION ===
     if active_batches or total_unprocessed == 0:
         st.markdown("---")

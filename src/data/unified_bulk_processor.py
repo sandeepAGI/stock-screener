@@ -250,7 +250,7 @@ class UnifiedBulkProcessor:
 
                 cursor.execute("""
                     INSERT INTO batch_mapping
-                    (batch_id, custom_id, table_name, record_id, symbol, status)
+                    (batch_id, custom_id, record_type, record_id, symbol, status)
                     VALUES (?, ?, ?, ?, ?, 'submitted')
                 """, (
                     batch_id,

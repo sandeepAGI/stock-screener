@@ -704,7 +704,7 @@ class DatabaseManager:
             "CREATE INDEX IF NOT EXISTS idx_temp_sentiment_queue_batch ON temp_sentiment_queue(batch_id)",
             "CREATE INDEX IF NOT EXISTS idx_temp_sentiment_queue_symbol ON temp_sentiment_queue(symbol)",
             "CREATE INDEX IF NOT EXISTS idx_batch_mapping_batch ON batch_mapping(batch_id)",
-            "CREATE INDEX IF NOT EXISTS idx_batch_mapping_record ON batch_mapping(table_name, record_id)"
+            "CREATE INDEX IF NOT EXISTS idx_batch_mapping_record ON batch_mapping(record_type, record_id)"
         ]
         
         for index in indexes:
