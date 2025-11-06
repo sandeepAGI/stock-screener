@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.stockanalyzer.batchmonitor</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/sandeepmangaraj/myworkspace/Utilities/stock-outlier/venv/bin/python</string>
+        <string>/Users/sandeepmangaraj/myworkspace/Utilities/stock-outlier/utilities/batch_monitor.py</string>
+        <string>--interval</string>
+        <string>300</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/sandeepmangaraj/myworkspace/Utilities/stock-outlier</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
+
+    <key>StandardOutPath</key>
+    <string>/Users/sandeepmangaraj/myworkspace/Utilities/stock-outlier/logs/batch_monitor_stdout.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/sandeepmangaraj/myworkspace/Utilities/stock-outlier/logs/batch_monitor_stderr.log</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>ThrottleInterval</key>
+    <integer>60</integer>
+</dict>
+</plist>

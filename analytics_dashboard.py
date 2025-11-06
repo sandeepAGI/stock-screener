@@ -1234,6 +1234,28 @@ def show_data_management():
         st.info("💡 **Why needed**: Claude API provides superior financial sentiment analysis")
 
     else:
+        # === STEP 2 COMPLETION STATUS ===
+        step2_complete = (total_unprocessed == 0)
+
+        if step2_complete:
+            st.success("### ✅ STEP 2: COMPLETE")
+            st.success("🎉 **All sentiment processing finished!** All {total_processed:,} items have been analyzed.")
+            st.info("➡️ **Ready for Step 3:** Proceed to calculate final rankings below")
+
+            # Show summary stats
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("📰 News Processed", f"{data_status['news_with_sentiment']:,}")
+            with col2:
+                st.metric("💭 Reddit Processed", f"{data_status['reddit_with_sentiment']:,}")
+            with col3:
+                st.metric("✅ Total Complete", f"{total_processed:,}")
+        else:
+            st.warning("### ⏳ STEP 2: IN PROGRESS")
+            st.info(f"📊 **Status:** {total_processed:,} processed, {total_unprocessed:,} remaining")
+
+        st.markdown("---")
+
         # Check for active batches
         active_batches = []
         if db.connect():
