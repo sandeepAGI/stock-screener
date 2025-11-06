@@ -354,17 +354,13 @@ class UnifiedBulkProcessor:
                         sentiment_data = self._parse_sentiment_json(content)
 
                         if sentiment_data:
-                            # Update batch_mapping
+                            # Update batch_mapping (only status and timestamp, no sentiment columns)
                             cursor.execute("""
                                 UPDATE batch_mapping
                                 SET status = 'completed',
-                                    sentiment_score = ?,
-                                    confidence = ?,
                                     processed_at = CURRENT_TIMESTAMP
                                 WHERE batch_id = ? AND custom_id = ?
                             """, (
-                                sentiment_data['sentiment_score'],
-                                sentiment_data.get('confidence', 0.5),
                                 batch_id,
                                 custom_id
                             ))
@@ -388,25 +384,22 @@ class UnifiedBulkProcessor:
 
                             successful_updates += 1
                         else:
-                            # Failed to parse
+                            # Failed to parse - just update status
                             cursor.execute("""
                                 UPDATE batch_mapping
                                 SET status = 'failed',
-                                    error_message = 'Failed to parse sentiment JSON',
                                     processed_at = CURRENT_TIMESTAMP
                                 WHERE batch_id = ? AND custom_id = ?
                             """, (batch_id, custom_id))
                             failed_updates += 1
                     else:
-                        # Request failed
-                        error_msg = getattr(result.result, 'error', 'Unknown error')
+                        # Request failed - just update status
                         cursor.execute("""
                             UPDATE batch_mapping
                             SET status = 'failed',
-                                error_message = ?,
                                 processed_at = CURRENT_TIMESTAMP
                             WHERE batch_id = ? AND custom_id = ?
-                        """, (str(error_msg), batch_id, custom_id))
+                        """, (batch_id, custom_id))
                         failed_updates += 1
 
                 except Exception as e:
