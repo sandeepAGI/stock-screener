@@ -230,6 +230,11 @@ class UnifiedBulkProcessor:
             requests: List of BatchSentimentRequest objects
         """
         try:
+            # Ensure database connection
+            if not self.db.connect():
+                logger.error("❌ Failed to connect to database for storing batch mapping")
+                return
+
             cursor = self.db.connection.cursor()
 
             for request in requests:
@@ -262,10 +267,13 @@ class UnifiedBulkProcessor:
 
             self.db.connection.commit()
             cursor.close()
+            self.db.close()
             logger.info(f"📊 Stored {len(requests)} batch mappings for batch {batch_id}")
 
         except Exception as e:
             logger.error(f"❌ Error storing batch mapping: {str(e)}")
+            if self.db.connection:
+                self.db.close()
 
     def check_batch_status(self, batch_id: str) -> Dict:
         """
