@@ -41,6 +41,15 @@ from src.data.database_operations import DatabaseOperationsManager
 from src.data.stock_universe import StockUniverseManager
 from src.data.unified_bulk_processor import UnifiedBulkProcessor
 
+# Import sync utility
+try:
+    from utilities.sync_sp500 import SP500Syncer
+except ImportError:
+    # If running from different location
+    import sys
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+    from utilities.sync_sp500 import SP500Syncer
+
 def setup_logging():
     """Setup logging exactly like baseline script"""
     logging.basicConfig(
@@ -385,7 +394,8 @@ def main():
     parser.add_argument('--symbols', help='Comma-separated list of symbols to refresh')
     parser.add_argument('--data-types', help='Comma-separated list: fundamentals,prices,news,sentiment')
     parser.add_argument('--max-age-days', type=int, default=7, help='Max age in days before refresh (default: 7)')
-    parser.add_argument('--check-sp500', action='store_true', help='Only check S&P 500 changes')
+    parser.add_argument('--check-sp500', action='store_true', help='Only check S&P 500 changes (no modifications)')
+    parser.add_argument('--sync-sp500', action='store_true', help='Sync S&P 500 composition (marks removed as inactive, adds new)')
     parser.add_argument('--force', action='store_true', help='Force refresh regardless of staleness')
     parser.add_argument('--quiet', action='store_true', help='Suppress interactive prompts')
     parser.add_argument('--process-sentiment', action='store_true', help='Submit batch for unprocessed sentiment items')
@@ -423,12 +433,40 @@ def main():
         else:
             print("⚠️  Warning: Backup creation failed")
         
-        # Detect S&P 500 changes using existing functionality
-        sp500_changes = detect_sp500_changes(universe_manager, db_manager)
-        
-        if args.check_sp500:
-            print("\n📊 S&P 500 Analysis Complete")
+        # Handle S&P 500 sync operations
+        if args.check_sp500 or args.sync_sp500:
+            print("\n🔍 S&P 500 Composition Management")
+            print("=" * 50)
+
+            syncer = SP500Syncer(db_path='data/stock_data.db')
+
+            # Fetch current S&P 500
+            current_symbols, metadata = syncer.fetch_sp500_symbols()
+
+            if not current_symbols:
+                print("❌ Failed to fetch S&P 500 symbols")
+                return 1
+
+            print(f"📊 Fetched {len(current_symbols)} symbols from {metadata['source']}")
+
+            # Get database stocks
+            all_db_symbols, active_db_symbols = syncer.get_database_stocks()
+
+            # Detect changes
+            changes = syncer.detect_changes(set(current_symbols), active_db_symbols)
+
+            # Apply or report
+            if args.sync_sp500:
+                results = syncer.apply_changes(changes, dry_run=False)
+                print(f"\n✅ S&P 500 sync complete")
+            else:
+                results = syncer.apply_changes(changes, dry_run=True)
+                print(f"\n📊 S&P 500 check complete (use --sync-sp500 to apply)")
+
             return 0
+
+        # Detect S&P 500 changes for informational purposes during regular refresh
+        sp500_changes = detect_sp500_changes(universe_manager, db_manager)
 
         # Handle batch processing operations
         if args.finalize_batch:

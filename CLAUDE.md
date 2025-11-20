@@ -44,6 +44,29 @@
    - Future Reddit collections will only collect valid stock mentions
    - Estimated savings: ~18% reduction in false positives, ~$8-15/month in API costs
 
+6. **S&P 500 Universe Management** - ✅ **COMPLETED**: Automatic tracking of S&P 500 composition changes
+   - **Problem Identified:** PARA and WBA returning 404 errors (acquired/removed from S&P 500)
+   - **Solution Implemented:**
+     - Created `utilities/sync_sp500.py` - Multi-source S&P 500 fetching utility
+     - Fixed Wikipedia fetching (403 Forbidden) with proper headers
+     - Integrated SlickCharts as primary source (503 symbols, 100% accurate)
+     - Marks removed stocks as `is_active=0` (preserves historical data)
+     - Adds new S&P 500 additions with full company information
+   - **Testing Complete:**
+     - Correctly identified 8 removed stocks (PARA, WBA, ENPH, EMN, MKTX, FI, CZR, KMX)
+     - Successfully added 8 new stocks (APP, IBKR, FISV, HOOD, PSKY, EME, SOLS, Q)
+     - Database now: 511 total (503 active, 8 inactive)
+   - **CLI Commands:**
+     - `python utilities/sync_sp500.py --check` - Check for changes only
+     - `python utilities/sync_sp500.py --sync` - Apply changes to database
+     - `python utilities/smart_refresh.py --check-sp500` - Check via smart_refresh
+     - `python utilities/smart_refresh.py --sync-sp500` - Sync via smart_refresh
+   - **Benefits:**
+     - No more 404 errors from acquired/delisted stocks
+     - Automatic detection of S&P 500 changes
+     - Preserves historical data for backtesting
+     - Ready for dashboard integration
+
 ### ✅ UPDATES (November 6, 2025):
 1. **Background Batch Monitor** - ✅ **COMPLETED**: Automatic batch result processing
    - Continuous polling service checks batches every 5 minutes
