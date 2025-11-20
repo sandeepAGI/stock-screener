@@ -1054,9 +1054,160 @@ def show_data_management():
     Each step serves a specific purpose and should be completed in order for best results.
     """)
 
-    # Get current data status
+    # === S&P 500 UNIVERSE MANAGEMENT ===
+    st.markdown("---")
+    st.markdown("## 📊 S&P 500 Universe Management")
+    st.markdown("*Track S&P 500 composition changes and manage stock universe*")
+
+    # Initialize database manager
     from src.data.database import DatabaseManager
     db = DatabaseManager()
+
+    # Import sync utility
+    try:
+        from utilities.sync_sp500 import SP500Syncer
+        sp500_syncer = SP500Syncer(db_path='data/stock_data.db')
+    except Exception as e:
+        st.error(f"❌ Could not initialize S&P 500 syncer: {e}")
+        sp500_syncer = None
+
+    # Get current status from database
+    universe_status = {"total": 0, "active": 0, "inactive": 0}
+    last_check_date = None
+
+    if db.connect():
+        cursor = db.connection.cursor()
+        cursor.execute("SELECT COUNT(*) FROM stocks")
+        universe_status["total"] = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COUNT(*) FROM stocks WHERE is_active = 1")
+        universe_status["active"] = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COUNT(*) FROM stocks WHERE is_active = 0")
+        universe_status["inactive"] = cursor.fetchone()[0]
+
+        cursor.close()
+        db.close()
+
+    # Show current status
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("📊 Total Stocks", f"{universe_status['total']:,}")
+    with col2:
+        st.metric("✅ Active (S&P 500)", f"{universe_status['active']:,}")
+    with col3:
+        st.metric("⏸️ Inactive (Removed)", f"{universe_status['inactive']:,}")
+    with col4:
+        expected_count = 503
+        delta = universe_status['active'] - expected_count
+        delta_str = f"+{delta}" if delta > 0 else str(delta) if delta < 0 else "On Target"
+        st.metric("🎯 Expected", f"{expected_count}", delta=delta_str)
+
+    # S&P 500 sync interface
+    st.markdown("**Manage S&P 500 Composition:**")
+
+    col1, col2 = st.columns([3, 1])
+
+    with col1:
+        st.markdown("• 🔍 **Check:** Fetch current S&P 500 list and compare with database")
+        st.markdown("• ✅ **Auto-marks:** Removed stocks as inactive (preserves historical data)")
+        st.markdown("• ➕ **Auto-adds:** New S&P 500 additions with full company info")
+        st.markdown("• 🔒 **Safe:** Preview changes before applying")
+
+    with col2:
+        st.markdown("**Actions:**")
+
+        # Initialize session state for S&P 500 changes
+        if 'sp500_changes' not in st.session_state:
+            st.session_state.sp500_changes = None
+        if 'sp500_metadata' not in st.session_state:
+            st.session_state.sp500_metadata = None
+
+        check_button = st.button("🔍 Check S&P 500", type="secondary", help="Check for composition changes", use_container_width=True)
+
+        if check_button and sp500_syncer:
+            with st.spinner("Fetching current S&P 500 composition..."):
+                try:
+                    # Fetch current S&P 500
+                    current_symbols, metadata = sp500_syncer.fetch_sp500_symbols()
+
+                    if current_symbols:
+                        # Get database stocks
+                        all_db_symbols, active_db_symbols = sp500_syncer.get_database_stocks()
+
+                        # Detect changes
+                        changes = sp500_syncer.detect_changes(set(current_symbols), active_db_symbols)
+
+                        # Store in session state
+                        st.session_state.sp500_changes = changes
+                        st.session_state.sp500_metadata = metadata
+
+                        st.success(f"✅ Checked S&P 500 from {metadata['source']}")
+                        st.rerun()
+                    else:
+                        st.error("❌ Failed to fetch S&P 500 symbols")
+                except Exception as e:
+                    st.error(f"❌ Error: {str(e)}")
+
+    # Display detected changes
+    if st.session_state.sp500_changes:
+        changes = st.session_state.sp500_changes
+        metadata = st.session_state.sp500_metadata
+
+        st.markdown("---")
+        st.markdown("### 📋 Detected Changes")
+
+        if changes['added'] or changes['removed']:
+            col1, col2 = st.columns(2)
+
+            with col1:
+                if changes['removed']:
+                    st.markdown(f"**➖ To Mark Inactive:** {len(changes['removed'])} stocks")
+                    with st.expander(f"View {len(changes['removed'])} stocks to be marked inactive"):
+                        for symbol in sorted(changes['removed']):
+                            st.markdown(f"• `{symbol}`")
+                else:
+                    st.success("**No stocks to remove**")
+
+            with col2:
+                if changes['added']:
+                    st.markdown(f"**➕ To Add:** {len(changes['added'])} new stocks")
+                    with st.expander(f"View {len(changes['added'])} new stocks"):
+                        for symbol in sorted(changes['added']):
+                            st.markdown(f"• `{symbol}`")
+                else:
+                    st.success("**No stocks to add**")
+
+            # Apply changes button
+            st.markdown("---")
+            col1, col2 = st.columns([3, 1])
+
+            with col1:
+                st.info(f"📊 **Source:** {metadata.get('source', 'Unknown')} ({metadata.get('total_symbols', 0)} symbols)")
+                st.info(f"⚠️ **Action:** Will mark {len(changes['removed'])} as inactive, add {len(changes['added'])} new stocks")
+
+            with col2:
+                if st.button("✅ Apply Changes", type="primary", help="Apply S&P 500 changes to database", use_container_width=True):
+                    with st.spinner("Applying S&P 500 changes..."):
+                        try:
+                            results = sp500_syncer.apply_changes(changes, dry_run=False)
+                            st.success(f"✅ Changes applied successfully!")
+                            st.success(f"📊 Marked {results['removed']} as inactive, added {results['added']} new stocks")
+
+                            # Clear session state
+                            st.session_state.sp500_changes = None
+                            st.session_state.sp500_metadata = None
+
+                            st.info("🔄 Refreshing page...")
+                            time.sleep(2)
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"❌ Error applying changes: {str(e)}")
+        else:
+            st.success("✅ **No changes detected** - S&P 500 composition is up to date!")
+            st.info(f"📊 Current: {changes['current_total']} stocks | Database: {changes['database_total']} active")
+
+    # Get current data status
     data_status = {
         "stocks_count": 0, "fundamentals_count": 0, "news_count": 0, "reddit_count": 0,
         "news_no_sentiment": 0, "reddit_no_sentiment": 0, "news_with_sentiment": 0, "reddit_with_sentiment": 0
