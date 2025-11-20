@@ -961,11 +961,18 @@ def show_individual_stock_analysis(df: pd.DataFrame):
                 for i, article in enumerate(news_articles[:10]):
                     title, date, sentiment, quality, url, publisher = article
                     date_str = str(date)[:10] if date else "N/A"
+
+                    # Handle empty titles (data collection issue)
+                    if not title or len(title.strip()) == 0:
+                        title_display = "[Title unavailable - data collection issue]"
+                    else:
+                        title_display = title[:100] + ("..." if len(title) > 100 else "")
+
                     if sentiment is not None:
                         emoji = "🟢" if sentiment > 0.3 else ("🟡" if sentiment >= -0.3 else "🔴")
-                        st.markdown(f"{emoji} **{sentiment:.1f}** | {title[:100]}... | *{date_str}*")
+                        st.markdown(f"{emoji} **{sentiment:.1f}** | {title_display} | *{date_str}*")
                     else:
-                        st.markdown(f"⚪ **N/A** | {title[:100]}... | *{date_str}*")
+                        st.markdown(f"⚪ **N/A** | {title_display} | *{date_str}*")
         else:
             st.info("No news articles available")
 
