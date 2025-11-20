@@ -513,7 +513,8 @@ def show_individual_stock_analysis(df: pd.DataFrame):
         cursor.execute("""
             SELECT reporting_date, pe_ratio, forward_pe, peg_ratio, price_to_book,
                    eps, total_revenue, net_income, free_cash_flow,
-                   total_debt, shareholders_equity, return_on_equity, debt_to_equity, current_ratio
+                   total_debt, shareholders_equity, return_on_equity, debt_to_equity, current_ratio,
+                   revenue_growth, earnings_growth
             FROM fundamental_data
             WHERE symbol = ?
             ORDER BY reporting_date DESC
@@ -744,34 +745,52 @@ def show_individual_stock_analysis(df: pd.DataFrame):
 
         # Growth Metrics Expander
         with st.expander("📈 Growth Metrics (20% weight)"):
-            if current_fundamentals and previous_fundamentals:
-                revenue_current = current_fundamentals[6]
-                revenue_previous = previous_fundamentals[6]
-                eps_current = current_fundamentals[5]
-                eps_previous = previous_fundamentals[5]
+            if current_fundamentals:
+                # Use pre-calculated growth metrics from Yahoo Finance
+                revenue_growth = current_fundamentals[14]  # revenue_growth
+                earnings_growth = current_fundamentals[15]  # earnings_growth
 
                 metrics_data = {
                     "Metric": [],
+                    "Current": [],
                     "Change": []
                 }
 
-                if revenue_current and revenue_previous and revenue_previous != 0:
-                    revenue_growth = calc_change(revenue_current, revenue_previous)
+                # Revenue Growth
+                if revenue_growth is not None:
+                    revenue_growth_pct = revenue_growth * 100  # Convert to percentage
                     metrics_data["Metric"].append("Revenue Growth")
-                    metrics_data["Change"].append(f"{revenue_growth:+.1f}%")
+                    metrics_data["Current"].append(f"{revenue_growth_pct:+.1f}%")
 
-                if eps_current and eps_previous and eps_previous != 0:
-                    eps_growth = calc_change(eps_current, eps_previous)
+                    if previous_fundamentals and previous_fundamentals[14] is not None:
+                        prev_rev_growth = previous_fundamentals[14] * 100
+                        change = calc_change(revenue_growth_pct, prev_rev_growth)
+                        arrow = "▲" if change > 0 else ("▼" if change < 0 else "─")
+                        metrics_data["Change"].append(f"{arrow} {abs(change):.1f}pp")
+                    else:
+                        metrics_data["Change"].append("─")
+
+                # Earnings Growth
+                if earnings_growth is not None:
+                    earnings_growth_pct = earnings_growth * 100  # Convert to percentage
                     metrics_data["Metric"].append("EPS Growth")
-                    metrics_data["Change"].append(f"{eps_growth:+.1f}%")
+                    metrics_data["Current"].append(f"{earnings_growth_pct:+.1f}%")
+
+                    if previous_fundamentals and previous_fundamentals[15] is not None:
+                        prev_earn_growth = previous_fundamentals[15] * 100
+                        change = calc_change(earnings_growth_pct, prev_earn_growth)
+                        arrow = "▲" if change > 0 else ("▼" if change < 0 else "─")
+                        metrics_data["Change"].append(f"{arrow} {abs(change):.1f}pp")
+                    else:
+                        metrics_data["Change"].append("─")
 
                 if metrics_data["Metric"]:
                     df_growth = pd.DataFrame(metrics_data)
                     st.dataframe(df_growth, use_container_width=True, hide_index=True)
                 else:
-                    st.info("Insufficient data for growth metrics")
+                    st.info("No growth metrics available from Yahoo Finance")
             else:
-                st.info("Need at least 2 data points for growth calculations")
+                st.info("No fundamental data available")
 
         # Sentiment Metrics Expander
         with st.expander("💭 Sentiment Metrics (15% weight)"):
