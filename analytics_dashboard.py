@@ -513,7 +513,7 @@ def show_individual_stock_analysis(df: pd.DataFrame):
         cursor.execute("""
             SELECT reporting_date, pe_ratio, forward_pe, peg_ratio, price_to_book,
                    eps, total_revenue, net_income, free_cash_flow,
-                   total_debt, shareholders_equity
+                   total_debt, shareholders_equity, return_on_equity, debt_to_equity, current_ratio
             FROM fundamental_data
             WHERE symbol = ?
             ORDER BY reporting_date DESC
@@ -683,33 +683,64 @@ def show_individual_stock_analysis(df: pd.DataFrame):
         # Quality Metrics Expander
         with st.expander("🏆 Quality Metrics (25% weight)"):
             if current_fundamentals:
-                # Calculate ROE, Debt-to-Equity, etc.
-                equity = current_fundamentals[10]  # shareholders_equity
-                debt = current_fundamentals[9]  # total_debt
-                net_income = current_fundamentals[7]  # net_income
+                # Use pre-calculated quality metrics from Yahoo Finance
+                roe = current_fundamentals[11]  # return_on_equity
+                debt_to_equity = current_fundamentals[12]  # debt_to_equity
+                current_ratio = current_fundamentals[13]  # current_ratio
 
                 metrics_data = {
                     "Metric": [],
-                    "Value": []
+                    "Current": [],
+                    "Change": []
                 }
 
-                if equity and equity != 0 and net_income:
-                    roe = (net_income / equity) * 100
+                # ROE
+                if roe is not None:
+                    roe_pct = roe * 100  # Convert to percentage
                     metrics_data["Metric"].append("ROE (Return on Equity)")
-                    metrics_data["Value"].append(f"{roe:.1f}%")
+                    metrics_data["Current"].append(f"{roe_pct:.1f}%")
 
-                if equity and equity != 0 and debt:
-                    debt_to_equity = (debt / equity)
+                    if previous_fundamentals and previous_fundamentals[11] is not None:
+                        prev_roe = previous_fundamentals[11] * 100
+                        change = calc_change(roe_pct, prev_roe)
+                        arrow = "▲" if change > 0 else ("▼" if change < 0 else "─")
+                        metrics_data["Change"].append(f"{arrow} {abs(change):.1f}%")
+                    else:
+                        metrics_data["Change"].append("─")
+
+                # Debt-to-Equity
+                if debt_to_equity is not None:
                     metrics_data["Metric"].append("Debt-to-Equity Ratio")
-                    metrics_data["Value"].append(f"{debt_to_equity:.2f}")
+                    metrics_data["Current"].append(f"{debt_to_equity:.2f}")
+
+                    if previous_fundamentals and previous_fundamentals[12] is not None:
+                        prev_d2e = previous_fundamentals[12]
+                        change = calc_change(debt_to_equity, prev_d2e)
+                        arrow = "▲" if change > 0 else ("▼" if change < 0 else "─")
+                        metrics_data["Change"].append(f"{arrow} {abs(change):.1f}%")
+                    else:
+                        metrics_data["Change"].append("─")
+
+                # Current Ratio
+                if current_ratio is not None:
+                    metrics_data["Metric"].append("Current Ratio")
+                    metrics_data["Current"].append(f"{current_ratio:.2f}")
+
+                    if previous_fundamentals and previous_fundamentals[13] is not None:
+                        prev_cr = previous_fundamentals[13]
+                        change = calc_change(current_ratio, prev_cr)
+                        arrow = "▲" if change > 0 else ("▼" if change < 0 else "─")
+                        metrics_data["Change"].append(f"{arrow} {abs(change):.1f}%")
+                    else:
+                        metrics_data["Change"].append("─")
 
                 if metrics_data["Metric"]:
                     df_quality = pd.DataFrame(metrics_data)
                     st.dataframe(df_quality, use_container_width=True, hide_index=True)
                 else:
-                    st.info("Insufficient data for quality metrics")
+                    st.info("No quality metrics available from Yahoo Finance")
             else:
-                st.info("No quality data available")
+                st.info("No fundamental data available")
 
         # Growth Metrics Expander
         with st.expander("📈 Growth Metrics (20% weight)"):
