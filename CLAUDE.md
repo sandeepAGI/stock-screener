@@ -73,6 +73,25 @@
      - Safe apply with automatic database updates
      - Session state management for smooth UX
 
+7. **Individual Stock Analysis Enhancement** - ✅ **COMPLETED**: Comprehensive stock detail page
+   - **Problem:** Individual Analysis page only showed composite scores, not underlying metrics or trends
+   - **Solution Implemented:**
+     - Section 1: Enhanced stock header with real-time data quality scoring
+     - Section 2: Component score overview (kept radar chart)
+     - Section 3: Underlying metrics breakdown (4 expandable sections: Fundamental, Quality, Growth, Sentiment)
+     - Section 4: Historical trends with small multiple charts (P/E, PEG, Composite Score)
+     - Section 5: Recent news articles with sentiment distribution (collapsed by default)
+     - Section 6: Recent Reddit posts with sentiment distribution (collapsed by default)
+     - Section 7: Automatic peer comparison (top 5 in same sector)
+   - **Features:**
+     - Real data fetching from database (fundamentals, news, Reddit, peers)
+     - Metrics show current vs previous update with percentage changes
+     - Historical trends displayed with actual irregular dates (honest about update frequency)
+     - Sentiment analysis with positive/neutral/negative breakdowns
+     - Peer comparison table with highlighting and bar charts
+   - **Bug Fixed:** DateTime subscripting error (converted datetime objects to strings before slicing)
+   - **File Modified:** `analytics_dashboard.py` - Complete rewrite of `show_individual_stock_analysis()` function (lines 464-1034)
+
 ### ✅ UPDATES (November 6, 2025):
 1. **Background Batch Monitor** - ✅ **COMPLETED**: Automatic batch result processing
    - Continuous polling service checks batches every 5 minutes

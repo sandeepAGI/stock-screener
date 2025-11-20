@@ -462,96 +462,146 @@ def format_data_quality(quality: float) -> str:
     return f'<span class="{css_class}">{percentage:.0f}%</span>'
 
 def show_individual_stock_analysis(df: pd.DataFrame):
-    """Display individual stock analysis tab"""
+    """Display enhanced individual stock analysis with underlying metrics and trends"""
     st.header("📈 Individual Stock Analysis")
 
     if df.empty:
         st.error("No data available for individual stock analysis.")
         return
 
-    # Stock selection with enhanced searchability
+    # Stock selection
     col1, col2 = st.columns([2, 1])
 
     with col1:
-        # Create searchable options - prioritize by score for better defaults
         df_sorted = df.sort_values('composite_score', ascending=False)
-
-        # Create options with both symbol and company name for better searchability
         stock_options = {}
         for _, row in df_sorted.iterrows():
-            # Format: "AAPL - Apple Inc. (Score: 85.2)"
             display_name = f"{row['symbol']} - {row['company_name']} (Score: {row['composite_score']:.1f})"
             stock_options[display_name] = row['symbol']
 
-        # Instructions for search
-        st.markdown("**💡 Search Tips:** Type ticker symbol (e.g., 'AAPL') or company name (e.g., 'Apple') to quickly find stocks")
+        st.markdown("**💡 Search Tips:** Type ticker symbol or company name to quickly find stocks")
 
         selected_display = st.selectbox(
             "🔍 Select a stock to analyze:",
             options=list(stock_options.keys()),
-            help="Start typing to search by ticker symbol or company name. Stocks are sorted by composite score (highest first).",
+            help="Start typing to search. Sorted by composite score.",
             key="stock_selector"
         )
         selected_symbol = stock_options[selected_display]
 
     with col2:
         st.metric("Total Stocks", len(df))
-        # Show selected stock's rank
         selected_rank = df[df['symbol'] == selected_symbol]['composite_rank'].iloc[0]
         st.metric("Selected Rank", f"#{int(selected_rank)}")
 
     # Get selected stock data
     stock_data = df[df['symbol'] == selected_symbol].iloc[0]
 
-    # Display stock header
+    # Fetch additional data from database
+    from src.data.database import DatabaseManager
+    db = DatabaseManager()
+
+    fundamental_history = []
+    news_articles = []
+    reddit_posts = []
+    peer_data = []
+
+    if db.connect():
+        cursor = db.connection.cursor()
+
+        # Fetch fundamental history
+        cursor.execute("""
+            SELECT reporting_date, pe_ratio, forward_pe, peg_ratio, price_to_book,
+                   eps, total_revenue, net_income, free_cash_flow,
+                   total_debt, shareholders_equity
+            FROM fundamental_data
+            WHERE symbol = ?
+            ORDER BY reporting_date DESC
+            LIMIT 15
+        """, (selected_symbol,))
+        fundamental_history = cursor.fetchall()
+
+        # Fetch news articles
+        cursor.execute("""
+            SELECT title, publish_date, sentiment_score, data_quality_score, url, publisher
+            FROM news_articles
+            WHERE symbol = ?
+            ORDER BY publish_date DESC
+            LIMIT 50
+        """, (selected_symbol,))
+        news_articles = cursor.fetchall()
+
+        # Fetch reddit posts
+        cursor.execute("""
+            SELECT title, created_at, sentiment_score, subreddit, score
+            FROM reddit_posts
+            WHERE symbol = ?
+            ORDER BY created_at DESC
+            LIMIT 50
+        """, (selected_symbol,))
+        reddit_posts = cursor.fetchall()
+
+        # Fetch peer stocks (same sector, top 5 by composite score)
+        if 'sector' in stock_data and pd.notna(stock_data['sector']):
+            cursor.execute("""
+                SELECT s.symbol, s.company_name, cm.composite_score,
+                       cm.fundamental_score, cm.quality_score, cm.growth_score
+                FROM stocks s
+                JOIN calculated_metrics cm ON s.symbol = cm.symbol
+                WHERE s.sector = ? AND s.symbol != ? AND s.is_active = 1
+                AND cm.calculation_date = (
+                    SELECT MAX(calculation_date) FROM calculated_metrics WHERE symbol = s.symbol
+                )
+                ORDER BY cm.composite_score DESC
+                LIMIT 5
+            """, (stock_data['sector'], selected_symbol))
+            peer_data = cursor.fetchall()
+
+        cursor.close()
+        db.close()
+
+    # === SECTION 1: STOCK HEADER & KEY METRICS ===
     st.subheader(f"📊 {stock_data['company_name']} ({selected_symbol})")
     if 'sector' in stock_data and pd.notna(stock_data['sector']):
         st.caption(f"Sector: {stock_data['sector']}")
 
-    # Key metrics overview
+    # Calculate actual data quality
+    overall_quality = 0.0
+    quality_components = []
+
+    if news_articles:
+        news_quality = sum([row[3] if row[3] else 0 for row in news_articles]) / len(news_articles)
+        quality_components.append(news_quality)
+
+    if fundamental_history:
+        quality_components.append(0.9)  # Fundamental data is generally high quality
+
+    if quality_components:
+        overall_quality = sum(quality_components) / len(quality_components)
+
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
-        st.metric(
-            "Composite Score",
-            f"{stock_data['composite_score']:.1f}",
-            help="Overall weighted score (0-100)"
-        )
+        st.metric("Composite Score", f"{stock_data['composite_score']:.1f}", help="Overall weighted score (0-100)")
 
     with col2:
         if 'sector_percentile' in stock_data and pd.notna(stock_data['sector_percentile']):
-            st.metric(
-                "Sector Percentile",
-                f"{stock_data['sector_percentile']:.1f}%",
-                help="Ranking within sector"
-            )
+            st.metric("Sector Percentile", f"{stock_data['sector_percentile']:.1f}%", help="Ranking within sector")
         else:
             st.metric("Market Rank", f"#{int(stock_data['composite_rank'])}")
 
     with col3:
-        # Calculate mock data quality (since we don't have it in current schema)
-        avg_quality = 0.85  # Mock value - would be calculated from actual data
-        st.metric(
-            "Data Quality",
-            f"{avg_quality*100:.0f}%",
-            help="Overall data completeness and reliability"
-        )
+        st.metric("Data Quality", f"{overall_quality*100:.0f}%", help="Based on news quality and data completeness")
 
     with col4:
-        # Determine category based on score
         score = stock_data['composite_score']
-        if score >= 70:
-            category = "Undervalued"
-        elif score >= 50:
-            category = "Balanced"
-        else:
-            category = "Overvalued"
+        category = "Undervalued" if score >= 70 else ("Balanced" if score >= 50 else "Overvalued")
         st.metric("Category", category)
 
-    # Component scores breakdown
-    st.subheader("📊 Component Score Breakdown")
+    # === SECTION 2: COMPONENT SCORE OVERVIEW ===
+    st.markdown("---")
+    st.subheader("📊 Component Score Overview")
 
-    # Create radar chart
     categories = ['Fundamental\\n(40%)', 'Quality\\n(25%)', 'Growth\\n(20%)', 'Sentiment\\n(15%)']
     scores = [
         stock_data['fundamental_score'],
@@ -561,64 +611,385 @@ def show_individual_stock_analysis(df: pd.DataFrame):
     ]
 
     fig = go.Figure()
-
     fig.add_trace(go.Scatterpolar(
         r=scores,
         theta=categories,
         fill='toself',
         name='Component Scores',
-        line_color='rgb(96, 181, 229)',  # Brand color
+        line_color='rgb(96, 181, 229)',
         fillcolor='rgba(96, 181, 229, 0.3)'
     ))
 
     fig.update_layout(
-        polar=dict(
-            radialaxis=dict(
-                visible=True,
-                range=[0, 100]
-            )),
+        polar=dict(radialaxis=dict(visible=True, range=[0, 100])),
         showlegend=False,
         title="Component Score Distribution",
-        height=400,
+        height=350,
         font=dict(family='Montserrat')
     )
 
-    col1, col2 = st.columns([1, 1])
+    st.plotly_chart(fig, use_container_width=True)
 
-    with col1:
-        st.plotly_chart(fig, use_container_width=True)
+    # === SECTION 3: UNDERLYING METRICS BREAKDOWN ===
+    st.markdown("---")
+    st.subheader("📈 Underlying Metrics Breakdown")
 
-    with col2:
-        st.markdown("**📋 Detailed Scores**")
+    # Get most recent and previous fundamentals
+    current_fundamentals = fundamental_history[0] if len(fundamental_history) > 0 else None
+    previous_fundamentals = fundamental_history[1] if len(fundamental_history) > 1 else None
 
-        components = [
-            ('Fundamental', stock_data['fundamental_score'], 40),
-            ('Quality', stock_data['quality_score'], 25),
-            ('Growth', stock_data['growth_score'], 20),
-            ('Sentiment', stock_data['sentiment_score'], 15)
-        ]
+    if current_fundamentals:
+        current_date = current_fundamentals[0]
+        prev_date = previous_fundamentals[0] if previous_fundamentals else None
 
-        for name, score, weight in components:
-            # Mock data quality for each component
-            mock_quality = 0.8 + (score / 500)  # Vary quality based on score
-            mock_quality = min(1.0, max(0.6, mock_quality))  # Keep in reasonable range
+        # Helper function to calculate change
+        def calc_change(current, previous):
+            if previous and previous != 0:
+                return ((current - previous) / previous) * 100
+            return 0.0
 
-            st.markdown(f"""
-            <div class="metric-card">
-                <strong>{name} ({weight}%)</strong><br>
-                Score: {format_score(score)}<br>
-                Data Quality: {format_data_quality(mock_quality)}
-            </div>
-            """, unsafe_allow_html=True)
+        # Fundamental Metrics Expander
+        with st.expander("📊 Fundamental Metrics (40% weight)", expanded=True):
+            if current_fundamentals:
+                st.markdown(f"**📅 Latest Data:** {current_date}" + (f" | **Comparing to:** {prev_date}" if prev_date else ""))
 
-    # Additional details section
+                metrics_data = {
+                    "Metric": ["P/E Ratio", "Forward P/E", "PEG Ratio", "Price/Book"],
+                    "Current": [
+                        f"{current_fundamentals[1]:.2f}" if current_fundamentals[1] else "N/A",
+                        f"{current_fundamentals[2]:.2f}" if current_fundamentals[2] else "N/A",
+                        f"{current_fundamentals[3]:.2f}" if current_fundamentals[3] else "N/A",
+                        f"{current_fundamentals[4]:.2f}" if current_fundamentals[4] else "N/A",
+                    ],
+                    "Change": []
+                }
+
+                if previous_fundamentals:
+                    for i, (curr, prev) in enumerate(zip(current_fundamentals[1:5], previous_fundamentals[1:5])):
+                        if curr and prev:
+                            change = calc_change(curr, prev)
+                            arrow = "▲" if change > 0 else ("▼" if change < 0 else "─")
+                            metrics_data["Change"].append(f"{arrow} {abs(change):.1f}%")
+                        else:
+                            metrics_data["Change"].append("N/A")
+                else:
+                    metrics_data["Change"] = ["N/A"] * 4
+
+                df_metrics = pd.DataFrame(metrics_data)
+                st.dataframe(df_metrics, use_container_width=True, hide_index=True)
+            else:
+                st.info("No fundamental data available")
+
+        # Quality Metrics Expander
+        with st.expander("🏆 Quality Metrics (25% weight)"):
+            if current_fundamentals:
+                # Calculate ROE, Debt-to-Equity, etc.
+                equity = current_fundamentals[10]  # shareholders_equity
+                debt = current_fundamentals[9]  # total_debt
+                net_income = current_fundamentals[7]  # net_income
+
+                metrics_data = {
+                    "Metric": [],
+                    "Value": []
+                }
+
+                if equity and equity != 0 and net_income:
+                    roe = (net_income / equity) * 100
+                    metrics_data["Metric"].append("ROE (Return on Equity)")
+                    metrics_data["Value"].append(f"{roe:.1f}%")
+
+                if equity and equity != 0 and debt:
+                    debt_to_equity = (debt / equity)
+                    metrics_data["Metric"].append("Debt-to-Equity Ratio")
+                    metrics_data["Value"].append(f"{debt_to_equity:.2f}")
+
+                if metrics_data["Metric"]:
+                    df_quality = pd.DataFrame(metrics_data)
+                    st.dataframe(df_quality, use_container_width=True, hide_index=True)
+                else:
+                    st.info("Insufficient data for quality metrics")
+            else:
+                st.info("No quality data available")
+
+        # Growth Metrics Expander
+        with st.expander("📈 Growth Metrics (20% weight)"):
+            if current_fundamentals and previous_fundamentals:
+                revenue_current = current_fundamentals[6]
+                revenue_previous = previous_fundamentals[6]
+                eps_current = current_fundamentals[5]
+                eps_previous = previous_fundamentals[5]
+
+                metrics_data = {
+                    "Metric": [],
+                    "Change": []
+                }
+
+                if revenue_current and revenue_previous and revenue_previous != 0:
+                    revenue_growth = calc_change(revenue_current, revenue_previous)
+                    metrics_data["Metric"].append("Revenue Growth")
+                    metrics_data["Change"].append(f"{revenue_growth:+.1f}%")
+
+                if eps_current and eps_previous and eps_previous != 0:
+                    eps_growth = calc_change(eps_current, eps_previous)
+                    metrics_data["Metric"].append("EPS Growth")
+                    metrics_data["Change"].append(f"{eps_growth:+.1f}%")
+
+                if metrics_data["Metric"]:
+                    df_growth = pd.DataFrame(metrics_data)
+                    st.dataframe(df_growth, use_container_width=True, hide_index=True)
+                else:
+                    st.info("Insufficient data for growth metrics")
+            else:
+                st.info("Need at least 2 data points for growth calculations")
+
+        # Sentiment Metrics Expander
+        with st.expander("💭 Sentiment Metrics (15% weight)"):
+            col1, col2 = st.columns(2)
+
+            with col1:
+                if news_articles:
+                    news_sentiments = [row[2] for row in news_articles if row[2] is not None]
+                    if news_sentiments:
+                        avg_news = sum(news_sentiments) / len(news_sentiments)
+                        st.metric("News Sentiment Avg", f"{avg_news:.2f}")
+                        st.caption(f"Based on {len(news_sentiments)} articles")
+                    else:
+                        st.info("No news sentiment data")
+                else:
+                    st.info("No news articles")
+
+            with col2:
+                if reddit_posts:
+                    reddit_sentiments = [row[2] for row in reddit_posts if row[2] is not None]
+                    if reddit_sentiments:
+                        avg_reddit = sum(reddit_sentiments) / len(reddit_sentiments)
+                        st.metric("Reddit Sentiment Avg", f"{avg_reddit:.2f}")
+                        st.caption(f"Based on {len(reddit_sentiments)} posts")
+                    else:
+                        st.info("No Reddit sentiment data")
+                else:
+                    st.info("No Reddit posts")
+    else:
+        st.info("No fundamental data available for this stock")
+
+    # === SECTION 4: HISTORICAL TRENDS ===
+    if len(fundamental_history) >= 3:
+        st.markdown("---")
+        st.subheader(f"📈 Historical Trends ({len(fundamental_history)} data points)")
+
+        # Create small multiple charts
+        col1, col2, col3 = st.columns(3)
+
+        # Prepare data
+        dates = [row[0] for row in fundamental_history[::-1]]  # Reverse for chronological
+        pe_ratios = [row[1] for row in fundamental_history[::-1]]
+        peg_ratios = [row[3] for row in fundamental_history[::-1]]
+        composite_history = []
+
+        # Get composite score history
+        if db.connect():
+            cursor = db.connection.cursor()
+            cursor.execute("""
+                SELECT calculation_date, composite_score
+                FROM calculated_metrics
+                WHERE symbol = ?
+                ORDER BY calculation_date DESC
+                LIMIT 15
+            """, (selected_symbol,))
+            composite_history = cursor.fetchall()[::-1]  # Reverse for chronological
+            cursor.close()
+            db.close()
+
+        with col1:
+            fig_pe = go.Figure()
+            fig_pe.add_trace(go.Scatter(
+                x=dates,
+                y=pe_ratios,
+                mode='lines+markers',
+                name='P/E Ratio',
+                line=dict(color='rgb(96, 181, 229)', width=2),
+                marker=dict(size=6)
+            ))
+            fig_pe.update_layout(
+                title="P/E Ratio Trend",
+                height=250,
+                margin=dict(l=20, r=20, t=40, b=20),
+                font=dict(family='Montserrat', size=10)
+            )
+            st.plotly_chart(fig_pe, use_container_width=True)
+
+        with col2:
+            fig_peg = go.Figure()
+            fig_peg.add_trace(go.Scatter(
+                x=dates,
+                y=peg_ratios,
+                mode='lines+markers',
+                name='PEG Ratio',
+                line=dict(color='rgb(96, 181, 229)', width=2),
+                marker=dict(size=6)
+            ))
+            fig_peg.update_layout(
+                title="PEG Ratio Trend",
+                height=250,
+                margin=dict(l=20, r=20, t=40, b=20),
+                font=dict(family='Montserrat', size=10)
+            )
+            st.plotly_chart(fig_peg, use_container_width=True)
+
+        with col3:
+            if composite_history:
+                comp_dates = [row[0] for row in composite_history]
+                comp_scores = [row[1] for row in composite_history]
+
+                fig_comp = go.Figure()
+                fig_comp.add_trace(go.Scatter(
+                    x=comp_dates,
+                    y=comp_scores,
+                    mode='lines+markers',
+                    name='Composite Score',
+                    line=dict(color='rgb(96, 181, 229)', width=2),
+                    marker=dict(size=6)
+                ))
+                fig_comp.update_layout(
+                    title="Composite Score Trend",
+                    height=250,
+                    margin=dict(l=20, r=20, t=40, b=20),
+                    font=dict(family='Montserrat', size=10)
+                )
+                st.plotly_chart(fig_comp, use_container_width=True)
+
+    # === SECTION 5: RECENT NEWS & SENTIMENT ===
+    st.markdown("---")
+    st.subheader("📰 Recent News & Sentiment")
+
+    with st.expander(f"📰 News Articles ({len(news_articles)} articles)", expanded=False):
+        if news_articles:
+            # Sentiment distribution
+            news_sentiments = [row[2] for row in news_articles if row[2] is not None]
+            if news_sentiments:
+                positive = len([s for s in news_sentiments if s > 0.3])
+                neutral = len([s for s in news_sentiments if -0.3 <= s <= 0.3])
+                negative = len([s for s in news_sentiments if s < -0.3])
+
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("🟢 Positive", positive)
+                with col2:
+                    st.metric("🟡 Neutral", neutral)
+                with col3:
+                    st.metric("🔴 Negative", negative)
+
+                st.markdown("---")
+                st.markdown("**Latest Headlines:**")
+
+                for i, article in enumerate(news_articles[:10]):
+                    title, date, sentiment, quality, url, publisher = article
+                    date_str = str(date)[:10] if date else "N/A"
+                    if sentiment is not None:
+                        emoji = "🟢" if sentiment > 0.3 else ("🟡" if sentiment >= -0.3 else "🔴")
+                        st.markdown(f"{emoji} **{sentiment:.1f}** | {title[:100]}... | *{date_str}*")
+                    else:
+                        st.markdown(f"⚪ **N/A** | {title[:100]}... | *{date_str}*")
+        else:
+            st.info("No news articles available")
+
+    with st.expander(f"💭 Reddit Discussions ({len(reddit_posts)} posts)", expanded=False):
+        if reddit_posts:
+            # Sentiment distribution
+            reddit_sentiments = [row[2] for row in reddit_posts if row[2] is not None]
+            if reddit_sentiments:
+                positive = len([s for s in reddit_sentiments if s > 0.3])
+                neutral = len([s for s in reddit_sentiments if -0.3 <= s <= 0.3])
+                negative = len([s for s in reddit_sentiments if s < -0.3])
+
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("🟢 Positive", positive)
+                with col2:
+                    st.metric("🟡 Neutral", neutral)
+                with col3:
+                    st.metric("🔴 Negative", negative)
+
+                st.markdown("---")
+                st.markdown("**Recent Discussions:**")
+
+                for post in reddit_posts[:10]:
+                    title, date, sentiment, subreddit, score = post
+                    date_str = str(date)[:10] if date else "N/A"
+                    if sentiment is not None:
+                        emoji = "🟢" if sentiment > 0.3 else ("🟡" if sentiment >= -0.3 else "🔴")
+                        st.markdown(f"{emoji} **{sentiment:.1f}** | {title[:100]}... | r/{subreddit} | *{date_str}*")
+                    else:
+                        st.markdown(f"⚪ **N/A** | {title[:100]}... | r/{subreddit} | *{date_str}*")
+        else:
+            st.info("No Reddit posts available")
+
+    # === SECTION 6: PEER COMPARISON ===
+    if peer_data:
+        st.markdown("---")
+        st.subheader(f"🏢 {stock_data['sector']} Sector Comparison")
+
+        # Prepare comparison data
+        comparison_data = {
+            "Stock": [selected_symbol] + [row[0] for row in peer_data],
+            "Company": [stock_data['company_name'][:20]] + [row[1][:20] for row in peer_data],
+            "Composite": [stock_data['composite_score']] + [row[2] for row in peer_data],
+            "Fundamental": [stock_data['fundamental_score']] + [row[3] for row in peer_data],
+            "Quality": [stock_data['quality_score']] + [row[4] for row in peer_data],
+            "Growth": [stock_data['growth_score']] + [row[5] for row in peer_data],
+        }
+
+        df_peers = pd.DataFrame(comparison_data)
+
+        # Display table
+        st.dataframe(
+            df_peers.style.highlight_max(subset=['Composite', 'Fundamental', 'Quality', 'Growth'], color='lightgreen'),
+            use_container_width=True,
+            hide_index=True
+        )
+
+        # Bar chart comparison
+        fig_peers = go.Figure()
+
+        fig_peers.add_trace(go.Bar(
+            name='Selected Stock',
+            x=['Composite', 'Fundamental', 'Quality', 'Growth'],
+            y=[stock_data['composite_score'], stock_data['fundamental_score'],
+               stock_data['quality_score'], stock_data['growth_score']],
+            marker_color='rgb(96, 181, 229)'
+        ))
+
+        if peer_data:
+            # Average of peers
+            avg_composite = sum([row[2] for row in peer_data]) / len(peer_data)
+            avg_fundamental = sum([row[3] for row in peer_data]) / len(peer_data)
+            avg_quality = sum([row[4] for row in peer_data]) / len(peer_data)
+            avg_growth = sum([row[5] for row in peer_data]) / len(peer_data)
+
+            fig_peers.add_trace(go.Bar(
+                name='Peer Average',
+                x=['Composite', 'Fundamental', 'Quality', 'Growth'],
+                y=[avg_composite, avg_fundamental, avg_quality, avg_growth],
+                marker_color='lightgray'
+            ))
+
+        fig_peers.update_layout(
+            title="Score Comparison vs Peers",
+            barmode='group',
+            height=400,
+            font=dict(family='Montserrat')
+        )
+
+        st.plotly_chart(fig_peers, use_container_width=True)
+
+    # === SECTION 7: INVESTMENT INSIGHTS ===
+    st.markdown("---")
     st.subheader("💡 Investment Insights")
 
     col1, col2 = st.columns(2)
 
     with col1:
         st.markdown("**🎯 Strengths**")
-        # Identify top 2 components
         component_scores = [
             ("Fundamental", stock_data['fundamental_score']),
             ("Quality", stock_data['quality_score']),
@@ -633,10 +1004,16 @@ def show_individual_stock_analysis(df: pd.DataFrame):
             else:
                 st.info(f"• {name} showing potential ({score:.1f}/100)")
 
+        # Add trend-based insights
+        if len(fundamental_history) >= 2 and current_fundamentals and previous_fundamentals:
+            pe_change = calc_change(current_fundamentals[1], previous_fundamentals[1]) if current_fundamentals[1] and previous_fundamentals[1] else 0
+            if abs(pe_change) > 5:
+                trend_text = "improving" if pe_change < 0 else "increasing"
+                st.info(f"📊 P/E ratio {trend_text}: {pe_change:+.1f}% since {prev_date}")
+
     with col2:
         st.markdown("**⚠️ Areas for Attention**")
 
-        # Look for areas that need attention
         attention_areas = []
         for name, score in component_scores:
             if score < 50:
@@ -645,19 +1022,17 @@ def show_individual_stock_analysis(df: pd.DataFrame):
                 attention_areas.append((name, score, "info"))
 
         if attention_areas:
-            # Show areas that actually need attention
             for name, score, alert_type in attention_areas:
                 if alert_type == "warning":
                     st.warning(f"• {name} metrics need attention ({score:.1f}/100)")
                 else:
                     st.info(f"• {name} has room for improvement ({score:.1f}/100)")
         else:
-            # If no areas need attention, show the weakest relative areas for monitoring
-            weakest_scores = component_scores[-2:]  # Bottom 2 scores
-            st.info("**📊 Areas to Monitor (relative weaknesses):**")
+            weakest_scores = component_scores[-2:]
+            st.info("**📊 Areas to Monitor:**")
             for name, score in weakest_scores:
                 relative_weakness = "lowest" if score == component_scores[-1][1] else "second lowest"
-                st.info(f"• {name}: {score:.1f}/100 ({relative_weakness} component)")
+                st.info(f"• {name}: {score:.1f}/100 ({relative_weakness})")
             st.success(f"💪 Overall strong performance - all metrics above 60")
 
 def show_methodology_guide():
