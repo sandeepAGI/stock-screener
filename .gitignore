@@ -89,6 +89,7 @@ backups/
 data/backups/
 *snapshot*.csv
 test_percentiles_results_*.csv
+*.db.backup_*
 
 # Chrome driver downloads (from webdriver-manager)
 ~/.wdm/
