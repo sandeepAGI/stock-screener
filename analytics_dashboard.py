@@ -123,6 +123,7 @@ def load_stock_data() -> pd.DataFrame:
             cm.symbol,
             s.company_name,
             s.sector,
+            s.industry,
             s.market_cap,
             cm.composite_score,
             cm.fundamental_score,
