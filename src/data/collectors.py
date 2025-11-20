@@ -217,26 +217,118 @@ class YahooFinanceCollector:
 
 class RedditCollector:
     """
-    Collector for Reddit sentiment data
+    Collector for Reddit sentiment data with enhanced validation to prevent false positives
     """
-    
+
     def __init__(self, config: Dict[str, Any]):
         self.config = config
         self.subreddits = config.get('data_sources', {}).get('reddit', {}).get('subreddits', ['investing', 'stocks'])
         self.rate_limit = config.get('data_sources', {}).get('reddit', {}).get('rate_limit_per_minute', 60)
-        
-        # Initialize Reddit API
+
+        # Load company names for validation
+        self.company_names = self._load_company_names()
+
+        # Initialize Reddit API with rate limiting configuration
         try:
             creds = get_reddit_credentials()
             self.reddit = praw.Reddit(
                 client_id=creds['client_id'],
                 client_secret=creds['client_secret'],
-                user_agent=creds['user_agent']
+                user_agent=creds['user_agent'],
+                ratelimit_seconds=300  # Allow up to 5 min wait for rate limit recovery
             )
             logger.info("Reddit API initialized successfully")
         except Exception as e:
             logger.error(f"Failed to initialize Reddit API: {str(e)}")
             self.reddit = None
+
+    def _load_company_names(self) -> Dict[str, str]:
+        """Load ticker -> company name mapping from database for validation"""
+        try:
+            from src.data.database import DatabaseManager
+            db = DatabaseManager()
+            if db.connect():
+                cursor = db.connection.cursor()
+                cursor.execute("SELECT symbol, company_name FROM stocks")
+                mapping = dict(cursor.fetchall())
+                db.close()
+                logger.info(f"Loaded {len(mapping)} company names for validation")
+                return mapping
+        except Exception as e:
+            logger.warning(f"Could not load company names: {e}")
+        return {}
+
+    def _extract_company_keywords(self, company_name: str) -> List[str]:
+        """Extract meaningful keywords from company name for validation"""
+        if not company_name:
+            return []
+
+        # Remove common suffixes
+        common_suffixes = [
+            'INC.', 'INC', 'CORP.', 'CORP', 'CORPORATION', 'LTD.', 'LTD',
+            'LIMITED', 'LLC', 'L.L.C.', 'PLC', 'CO.', 'COMPANY', 'GROUP',
+            'HOLDINGS', 'THE', ','
+        ]
+
+        name_upper = company_name.upper()
+        for suffix in common_suffixes:
+            name_upper = name_upper.replace(suffix, '')
+
+        # Split into words and filter
+        words = name_upper.split()
+        keywords = [w.strip() for w in words if len(w.strip()) > 3]
+
+        return keywords[:2]  # Return top 2 meaningful words
+
+    def _validate_stock_mention(self, text: str, symbol: str, company_name: str = None) -> bool:
+        """
+        Validate if post is a true mention of the stock using tiered approach
+
+        Tier 1: Dollar sign prefix (ALWAYS valid)
+        Tier 2: Company name mention (ALWAYS valid)
+        Tier 3: Word boundary + context validation (for short tickers)
+
+        Returns:
+            True if valid stock mention, False if false positive
+        """
+        import re
+
+        text_upper = text.upper()
+        symbol_upper = symbol.upper()
+
+        # Tier 1: Dollar sign prefix (ALWAYS valid)
+        if f"${symbol_upper}" in text_upper:
+            return True
+
+        # Tier 2: Company name mention (ALWAYS valid)
+        if company_name:
+            company_keywords = self._extract_company_keywords(company_name)
+            for keyword in company_keywords:
+                if keyword in text_upper:
+                    return True
+
+        # Tier 3: Word boundary + context validation
+        # Check if symbol appears as whole word (not substring)
+        word_boundary_pattern = rf'\b{re.escape(symbol_upper)}\b'
+        if not re.search(word_boundary_pattern, text_upper):
+            return False  # Not a whole word, reject
+
+        # For short tickers (≤3 chars), require stock context
+        if len(symbol) <= 3:
+            stock_keywords = [
+                'STOCK', 'SHARES', 'BUY', 'SELL', 'BOUGHT', 'SOLD',
+                'EARNINGS', 'REVENUE', 'PRICE', 'TARGET', 'PT',
+                'DD', 'DUE DILIGENCE', 'ANALYSIS', 'CALLS', 'PUTS',
+                'OPTIONS', 'POSITION', 'BULLISH', 'BEARISH', 'LONG', 'SHORT',
+                'INVEST', 'PORTFOLIO', 'HOLDING', 'TICKER', 'STOCK MARKET',
+                'VALUATION', 'P/E', 'EPS', 'DIVIDEND', 'YIELD'
+            ]
+
+            has_context = any(keyword in text_upper for keyword in stock_keywords)
+            return has_context
+
+        # Medium/long tickers: word boundary is sufficient
+        return True
             
     def collect_stock_mentions(self, symbol: str, days_back: int = 7, max_posts: int = 100) -> List[Dict[str, Any]]:
         """
@@ -257,10 +349,7 @@ class RedditCollector:
         try:
             posts = []
             cutoff_date = datetime.now() - timedelta(days=days_back)
-            
-            # Search terms for the symbol
-            search_terms = [symbol, f"${symbol}", symbol.lower()]
-            
+
             for subreddit_name in self.subreddits:
                 try:
                     subreddit = self.reddit.subreddit(subreddit_name)
@@ -274,16 +363,18 @@ class RedditCollector:
                         post_date = datetime.fromtimestamp(post.created_utc)
                         if post_date < cutoff_date:
                             continue
-                            
-                        # Check if symbol is actually mentioned in title or body
-                        text_content = f"{post.title} {post.selftext}".upper()
-                        if any(term.upper() in text_content for term in search_terms):
+
+                        # Validate if post is a true stock mention (prevents false positives)
+                        text_content = f"{post.title} {post.selftext}"
+                        company_name = self.company_names.get(symbol, "")
+
+                        if self._validate_stock_mention(text_content, symbol, company_name):
                             # Get author name if available (some posts may be deleted/anonymous)
                             try:
                                 author_name = str(post.author) if post.author else 'unknown'
                             except:
                                 author_name = 'unknown'
-                            
+
                             posts.append({
                                 'id': post.id,
                                 'title': post.title,
@@ -578,8 +669,8 @@ class DataCollectionOrchestrator:
                 else:
                     results[symbol] = False
                     logger.warning(f"No Reddit sentiment data available for {symbol}")
-                
-                time.sleep(0.5)  # Longer delay for Reddit API
+
+                time.sleep(0.61)  # Reddit API limit: 100 QPM (0.61s = 98 req/min for safety)
                 
             except Exception as e:
                 results[symbol] = False
