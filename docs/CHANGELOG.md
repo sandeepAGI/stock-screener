@@ -3,6 +3,118 @@
 
 ---
 
+## November 20, 2025 - Late Session: Production Planning & Documentation
+
+### CLAUDE.md Reorganization
+**Status:** ✅ COMPLETED
+
+**Problem:** CLAUDE.md had grown to 951 lines, becoming a historical archive rather than quick reference
+- Mixed audience (AI assistant + human developers + historical record)
+- Session details embedded inline, making current state hard to find
+- Duplicate content with README and other docs
+- No clear maintenance guidelines
+
+**Solution: Three-File Structure**
+1. **CLAUDE.md** (381 lines) - Current state reference for AI
+   - System status, architecture, guidelines
+   - Quick reference commands
+   - Current priorities only
+   - Added "Documentation Maintenance Guidelines" section
+
+2. **docs/CHANGELOG.md** (462 lines) - Complete historical record
+   - All session accomplishments
+   - Bug fix details and root causes
+   - Performance improvements
+   - Chronological format (most recent first)
+
+3. **docs/archive/CLAUDE_OLD_20251120.md** (950 lines) - Backup
+   - Original version preserved
+   - Can reference if needed
+
+**Benefits:**
+- 60% size reduction (951 → 381 lines)
+- Faster AI context loading
+- Clear maintenance expectations
+- Professional documentation structure
+- Historical details preserved
+
+**Documentation Maintenance Guidelines Added:**
+- CLAUDE.md updates ONLY when system state changes
+- Session notes always go to CHANGELOG.md
+- Clear examples of correct vs incorrect updates
+- Target size: 200-350 lines
+- Reading time: 2-3 minutes for Claude
+
+**Files Created:**
+- `docs/CHANGELOG.md` - Historical record
+- `docs/CLAUDE_REORGANIZATION_PROPOSAL.md` - Decision record
+- `docs/archive/CLAUDE_OLD_20251120.md` - Original backup
+
+**Commit:** `fe38817 - docs: Reorganize CLAUDE.md for clarity and maintainability`
+
+### Production Distribution Planning
+**Status:** ✅ PLANNING COMPLETE
+
+**Created Comprehensive Documentation:**
+
+1. **docs/IMPLEMENTATION_ROADMAP.md**
+   - 8-phase implementation plan
+   - Time estimates: 15-22 hours total (2-3 days)
+   - Three execution strategies (Sprint/Incremental/Phased)
+   - Complete success criteria and checkpoints
+
+2. **docs/API_KEY_MIGRATION.md**
+   - Critical security issue identified: API keys would be bundled
+   - Solution: User-provided API keys (Option A)
+   - All 4 keys requiring migration:
+     - REDDIT_CLIENT_ID
+     - REDDIT_CLIENT_SECRET
+     - REDDIT_USER_AGENT
+     - NEWS_API_KEY (Anthropic/Claude API)
+   - Implementation details with code examples
+   - Testing procedures
+
+3. **docs/CICD_PIPELINE.md**
+   - Complete GitHub Actions workflow design
+   - Build process for all platforms (macOS, Windows, Linux)
+   - Release automation with semantic versioning
+   - Branching strategy (main = dev, prod = releases)
+   - Upgrade workflows
+
+**Branch Setup:**
+- Created `prod` branch for production releases
+- `main` remains development branch
+- GitHub Actions will trigger on `prod` pushes
+
+**Key Insights:**
+- **CRITICAL:** Must implement API key migration BEFORE distributing
+  - Current risk: Users would consume YOUR Claude API ($$$)
+  - Current risk: Users would share YOUR Reddit quota
+  - Solution: 4-6 hours to implement user-provided keys
+
+- **Build Strategy:** PyInstaller for standalone executables
+  - Bundle Python + dependencies
+  - One-click launch (no terminal needed)
+  - Cross-platform support
+
+- **Distribution:** GitHub Releases
+  - Automated builds via GitHub Actions
+  - DMG for macOS, ZIP/installer for Windows, tar.gz for Linux
+  - Semantic versioning (v1.0.0, v1.1.0, etc.)
+
+**Next Steps:**
+- Phase 2: API Key Security Migration (4-6 hours) - CRITICAL FIRST
+- Phase 3: Launcher Scripts (2-3 hours)
+- Phase 4: PyInstaller Configuration (3-4 hours)
+- Phase 5: GitHub Actions (2-3 hours) - optional, can build locally
+- Phase 6: User Documentation (1-2 hours)
+- Phase 7: Testing & QA (2-3 hours)
+- Phase 8: Distribution to Aileron partner (30 min)
+
+**Total LOE:** 15-22 hours (2-3 work days)
+
+---
+
 ## November 20, 2025 - Evening Session
 
 ### News Collector Yahoo Finance API Fix
