@@ -188,7 +188,9 @@ class YahooFinanceCollector:
                 if isinstance(click_through, dict):
                     link = click_through.get('url', '')
                 else:
-                    link = content.get('canonicalUrl', '')
+                    # Fallback to canonicalUrl (also nested)
+                    canonical = content.get('canonicalUrl', {})
+                    link = canonical.get('url', '') if isinstance(canonical, dict) else ''
                 
                 # Extract provider information
                 provider = content.get('provider', {})
@@ -567,19 +569,40 @@ class DataCollectionOrchestrator:
                     # Collect articles first, then process sentiment in bulk
                     for news_item in news:
                         try:
-                            # Parse publish date
-                            publish_date = datetime.fromtimestamp(news_item.get('providerPublishTime', datetime.now().timestamp()))
+                            # Parse publish date - check both old and new formats
+                            pub_time = news_item.get('providerPublishTime')
+                            if not pub_time:
+                                # New API format: nested in content
+                                content = news_item.get('content', {})
+                                pub_date_str = content.get('pubDate')
+                                if pub_date_str:
+                                    publish_date = datetime.fromisoformat(pub_date_str.replace('Z', '+00:00'))
+                                else:
+                                    publish_date = datetime.now()
+                            else:
+                                publish_date = datetime.fromtimestamp(pub_time)
                         except (ValueError, TypeError, KeyError):
                             publish_date = datetime.now()
 
+                        # Extract data from nested 'content' structure (new Yahoo Finance API format)
+                        content = news_item.get('content', {})
+
+                        # Get provider info
+                        provider = content.get('provider', {})
+                        publisher = provider.get('displayName', '') if isinstance(provider, dict) else ''
+
+                        # Get URL
+                        click_through = content.get('clickThroughUrl', {})
+                        url = click_through.get('url', '') if isinstance(click_through, dict) else content.get('canonicalUrl', {}).get('url', '')
+
                         article = NewsArticle(
                             symbol=symbol,
-                            title=news_item.get('title', ''),
-                            summary=news_item.get('summary', ''),
-                            content=news_item.get('summary', ''),  # Yahoo doesn't provide full content
-                            publisher=news_item.get('publisher', ''),
+                            title=content.get('title', ''),  # Fixed: extract from content
+                            summary=content.get('summary', ''),  # Fixed: extract from content
+                            content=content.get('summary', ''),  # Yahoo doesn't provide full content
+                            publisher=publisher,  # Fixed: extract from nested provider
                             publish_date=publish_date,
-                            url=news_item.get('link', ''),
+                            url=url,  # Fixed: extract from nested clickThroughUrl
                             sentiment_score=None,  # ← Will be calculated later via bulk processing
                             data_quality_score=0.8  # Base quality for news articles
                         )
