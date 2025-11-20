@@ -1003,18 +1003,45 @@ def show_individual_stock_analysis(df: pd.DataFrame):
     st.markdown("---")
     st.subheader("🏢 Peer Comparison")
 
-    # Helper function to display peer comparison
-    def display_peer_comparison(peers, comparison_title, comparison_subtitle):
+    # Helper function to display industry peer comparison (table only)
+    def display_industry_peers(peers, industry_name):
         if not peers:
             return
 
-        st.markdown(f"#### {comparison_title}")
-        st.caption(comparison_subtitle)
+        st.markdown(f"#### 🎯 Industry Peers: {industry_name}")
+        st.caption(f"Direct competitors - {len(peers) + 1} stocks in same industry")
 
         # Prepare comparison data
         comparison_data = {
             "Stock": [selected_symbol] + [row[0] for row in peers],
-            "Company": [stock_data['company_name'][:20]] + [row[1][:20] for row in peers],
+            "Company": [stock_data['company_name'][:25]] + [row[1][:25] for row in peers],
+            "Composite": [stock_data['composite_score']] + [row[2] for row in peers],
+            "Fundamental": [stock_data['fundamental_score']] + [row[3] for row in peers],
+            "Quality": [stock_data['quality_score']] + [row[4] for row in peers],
+            "Growth": [stock_data['growth_score']] + [row[5] for row in peers],
+        }
+
+        df_peers = pd.DataFrame(comparison_data)
+
+        # Display table with highlighting
+        st.dataframe(
+            df_peers.style.highlight_max(subset=['Composite', 'Fundamental', 'Quality', 'Growth'], color='lightgreen'),
+            use_container_width=True,
+            hide_index=True
+        )
+
+    # Helper function to display sector comparison (table + bar chart)
+    def display_sector_peers(peers, sector_name):
+        if not peers:
+            return
+
+        st.markdown(f"#### 📊 Sector Comparison: {sector_name}")
+        st.caption(f"Top performers in sector - {len(peers) + 1} stocks (includes sector-level scoring adjustments)")
+
+        # Prepare comparison data
+        comparison_data = {
+            "Stock": [selected_symbol] + [row[0] for row in peers],
+            "Company": [stock_data['company_name'][:25]] + [row[1][:25] for row in peers],
             "Composite": [stock_data['composite_score']] + [row[2] for row in peers],
             "Fundamental": [stock_data['fundamental_score']] + [row[3] for row in peers],
             "Quality": [stock_data['quality_score']] + [row[4] for row in peers],
@@ -1041,45 +1068,43 @@ def show_individual_stock_analysis(df: pd.DataFrame):
             marker_color='rgb(96, 181, 229)'
         ))
 
-        # Average of peers
+        # Calculate sector average
         avg_composite = sum([row[2] for row in peers]) / len(peers)
         avg_fundamental = sum([row[3] for row in peers]) / len(peers)
         avg_quality = sum([row[4] for row in peers]) / len(peers)
         avg_growth = sum([row[5] for row in peers]) / len(peers)
 
         fig_peers.add_trace(go.Bar(
-            name='Peer Average',
+            name=f'{sector_name} Sector Average',
             x=['Composite', 'Fundamental', 'Quality', 'Growth'],
             y=[avg_composite, avg_fundamental, avg_quality, avg_growth],
             marker_color='lightgray'
         ))
 
         fig_peers.update_layout(
-            title=f"{selected_symbol} vs Peer Average",
+            title=f"{selected_symbol} vs {sector_name} Sector Average",
             barmode='group',
-            height=350,
+            height=400,
             font=dict(family='Montserrat')
         )
 
         st.plotly_chart(fig_peers, use_container_width=True)
 
-    # Display Industry Comparison (direct competitors)
+    # Display Industry Comparison (direct competitors - table only)
     if industry_peers and len(industry_peers) >= 1:
-        display_peer_comparison(
+        display_industry_peers(
             industry_peers,
-            f"🎯 Industry Comparison: {stock_data.get('industry', 'Unknown')}",
-            f"Direct competitors - {len(industry_peers) + 1} stocks in same industry"
+            stock_data.get('industry', 'Unknown')
         )
 
         if sector_peers:
             st.markdown("---")
 
-    # Display Sector Comparison (broader context)
+    # Display Sector Comparison (broader context - table + bar chart)
     if sector_peers:
-        display_peer_comparison(
+        display_sector_peers(
             sector_peers,
-            f"📊 Sector Comparison: {stock_data.get('sector', 'Unknown')}",
-            f"Top performers in sector - includes sector-level scoring adjustments"
+            stock_data.get('sector', 'Unknown')
         )
 
     # If neither comparison available
