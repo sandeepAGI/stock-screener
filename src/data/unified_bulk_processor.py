@@ -110,6 +110,71 @@ class UnifiedBulkProcessor:
         finally:
             self.db.close()
 
+    def submit_bulk_batch(self, unprocessed_items: List[Dict]) -> Optional[str]:
+        """
+        Submit a bulk batch for processing using provided unprocessed items
+
+        Args:
+            unprocessed_items: List of items from get_unprocessed_items_for_batch()
+                             Each item has: record_id, symbol, title, content, content_type
+
+        Returns:
+            Anthropic batch ID if successful, None otherwise
+        """
+        if not unprocessed_items:
+            logger.warning("No items provided for batch submission")
+            return None
+
+        try:
+            # Transform items into format expected by bulk processor
+            news_articles = []
+            reddit_posts = []
+
+            for item in unprocessed_items:
+                symbol = item['symbol']
+                content_type = item['content_type']
+                record_id = item['record_id']
+
+                # Get title and content for sentiment analysis
+                title = item.get('title', '')
+                content = item.get('content', '')
+
+                if content_type == 'news':
+                    news_articles.append((symbol, title, content, {
+                        'record_id': record_id,
+                        'content_id': record_id
+                    }))
+                elif content_type == 'reddit':
+                    reddit_posts.append((symbol, title, content, {
+                        'record_id': record_id,
+                        'content_id': record_id
+                    }))
+
+            logger.info(f"🚀 Submitting batch with {len(news_articles)} news articles and {len(reddit_posts)} Reddit posts...")
+
+            # Submit batch for processing
+            submission_result = self.bulk_processor.submit_batch_for_processing(
+                news_articles=news_articles if news_articles else None,
+                reddit_posts=reddit_posts if reddit_posts else None
+            )
+
+            if not submission_result:
+                logger.error("❌ Failed to submit batch for processing")
+                return None
+
+            anthropic_batch_id, requests = submission_result
+
+            # Store batch mapping for tracking
+            self._store_batch_mapping(anthropic_batch_id, requests)
+
+            logger.info(f"✅ Batch {anthropic_batch_id} submitted successfully")
+
+            return anthropic_batch_id
+
+        except Exception as e:
+            logger.error(f"❌ Error submitting bulk batch: {str(e)}")
+            return None
+
     def process_next_batch(self) -> Dict:
         """
         Process the next batch of items from the sentiment queue
@@ -318,6 +383,19 @@ class UnifiedBulkProcessor:
         except Exception as e:
             logger.error(f"❌ Error checking batch status: {str(e)}")
             return {"success": False, "error": str(e)}
+
+    def retrieve_and_apply_results(self, batch_id: str) -> bool:
+        """
+        Retrieve and apply batch results (alias for retrieve_and_process_batch_results)
+
+        Args:
+            batch_id: Anthropic batch ID
+
+        Returns:
+            True if successful, False otherwise
+        """
+        result = self.retrieve_and_process_batch_results(batch_id)
+        return result.get('success', False)
 
     def retrieve_and_process_batch_results(self, batch_id: str) -> Dict:
         """

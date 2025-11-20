@@ -510,12 +510,12 @@ def show_individual_stock_analysis(df: pd.DataFrame):
     if db.connect():
         cursor = db.connection.cursor()
 
-        # Fetch fundamental history
+        # Fetch fundamental history (with created_at for freshness tracking)
         cursor.execute("""
             SELECT reporting_date, pe_ratio, forward_pe, peg_ratio, price_to_book,
                    eps, total_revenue, net_income, free_cash_flow,
                    total_debt, shareholders_equity, return_on_equity, debt_to_equity, current_ratio,
-                   revenue_growth, earnings_growth
+                   revenue_growth, earnings_growth, created_at
             FROM fundamental_data
             WHERE symbol = ?
             ORDER BY reporting_date DESC
@@ -666,10 +666,40 @@ def show_individual_stock_analysis(df: pd.DataFrame):
     previous_fundamentals = fundamental_history[1] if len(fundamental_history) > 1 else None
 
     if current_fundamentals:
+        from datetime import datetime
         current_date = current_fundamentals[0]
         prev_date = previous_fundamentals[0] if previous_fundamentals else None
+        created_at = current_fundamentals[16]  # created_at timestamp
 
-        # Helper function to calculate change
+        # Calculate days since last update
+        def format_last_updated(timestamp_str):
+            try:
+                if timestamp_str:
+                    # Handle various timestamp formats
+                    # Format: 2025-11-20T09:23:57.463392 or 2025-11-20T09:23:57
+                    if isinstance(timestamp_str, str):
+                        # Remove microseconds if present for easier parsing
+                        if '.' in timestamp_str:
+                            timestamp_str = timestamp_str.split('.')[0]
+                        updated_time = datetime.fromisoformat(timestamp_str)
+                    else:
+                        # Already a datetime object
+                        updated_time = timestamp_str
+
+                    days_ago = (datetime.now() - updated_time).days
+                    if days_ago == 0:
+                        return "Today"
+                    elif days_ago == 1:
+                        return "1 day ago"
+                    else:
+                        return f"{days_ago} days ago"
+            except Exception as e:
+                pass
+            return "Unknown"
+
+        last_updated_str = format_last_updated(created_at)
+
+        # Helper function to calculate percentage change
         def calc_change(current, previous):
             if previous and previous != 0:
                 return ((current - previous) / previous) * 100
@@ -678,7 +708,11 @@ def show_individual_stock_analysis(df: pd.DataFrame):
         # Fundamental Metrics Expander
         with st.expander("📊 Fundamental Metrics (40% weight)", expanded=True):
             if current_fundamentals:
-                st.markdown(f"**📅 Latest Data:** {current_date}" + (f" | **Comparing to:** {prev_date}" if prev_date else ""))
+                header = f"**📅 Current:** {current_date}"
+                if prev_date:
+                    header += f" | **📅 Previous:** {prev_date}"
+                header += f" | **🕒 Last Updated:** {last_updated_str}"
+                st.markdown(header)
 
                 metrics_data = {
                     "Metric": ["P/E Ratio", "Forward P/E", "PEG Ratio", "Price/Book"],
@@ -688,19 +722,15 @@ def show_individual_stock_analysis(df: pd.DataFrame):
                         f"{current_fundamentals[3]:.2f}" if current_fundamentals[3] else "N/A",
                         f"{current_fundamentals[4]:.2f}" if current_fundamentals[4] else "N/A",
                     ],
-                    "Change": []
+                    "Previous": []
                 }
 
                 if previous_fundamentals:
-                    for i, (curr, prev) in enumerate(zip(current_fundamentals[1:5], previous_fundamentals[1:5])):
-                        if curr and prev:
-                            change = calc_change(curr, prev)
-                            arrow = "▲" if change > 0 else ("▼" if change < 0 else "─")
-                            metrics_data["Change"].append(f"{arrow} {abs(change):.1f}%")
-                        else:
-                            metrics_data["Change"].append("N/A")
+                    for i in range(1, 5):
+                        prev_val = previous_fundamentals[i]
+                        metrics_data["Previous"].append(f"{prev_val:.2f}" if prev_val else "N/A")
                 else:
-                    metrics_data["Change"] = ["N/A"] * 4
+                    metrics_data["Previous"] = ["N/A"] * 4
 
                 df_metrics = pd.DataFrame(metrics_data)
                 st.dataframe(df_metrics, use_container_width=True, hide_index=True)
@@ -718,7 +748,7 @@ def show_individual_stock_analysis(df: pd.DataFrame):
                 metrics_data = {
                     "Metric": [],
                     "Current": [],
-                    "Change": []
+                    "Previous": []
                 }
 
                 # ROE
@@ -726,40 +756,31 @@ def show_individual_stock_analysis(df: pd.DataFrame):
                     roe_pct = roe * 100  # Convert to percentage
                     metrics_data["Metric"].append("ROE (Return on Equity)")
                     metrics_data["Current"].append(f"{roe_pct:.1f}%")
-
                     if previous_fundamentals and previous_fundamentals[11] is not None:
                         prev_roe = previous_fundamentals[11] * 100
-                        change = calc_change(roe_pct, prev_roe)
-                        arrow = "▲" if change > 0 else ("▼" if change < 0 else "─")
-                        metrics_data["Change"].append(f"{arrow} {abs(change):.1f}%")
+                        metrics_data["Previous"].append(f"{prev_roe:.1f}%")
                     else:
-                        metrics_data["Change"].append("─")
+                        metrics_data["Previous"].append("N/A")
 
                 # Debt-to-Equity
                 if debt_to_equity is not None:
                     metrics_data["Metric"].append("Debt-to-Equity Ratio")
                     metrics_data["Current"].append(f"{debt_to_equity:.2f}")
-
                     if previous_fundamentals and previous_fundamentals[12] is not None:
                         prev_d2e = previous_fundamentals[12]
-                        change = calc_change(debt_to_equity, prev_d2e)
-                        arrow = "▲" if change > 0 else ("▼" if change < 0 else "─")
-                        metrics_data["Change"].append(f"{arrow} {abs(change):.1f}%")
+                        metrics_data["Previous"].append(f"{prev_d2e:.2f}")
                     else:
-                        metrics_data["Change"].append("─")
+                        metrics_data["Previous"].append("N/A")
 
                 # Current Ratio
                 if current_ratio is not None:
                     metrics_data["Metric"].append("Current Ratio")
                     metrics_data["Current"].append(f"{current_ratio:.2f}")
-
                     if previous_fundamentals and previous_fundamentals[13] is not None:
                         prev_cr = previous_fundamentals[13]
-                        change = calc_change(current_ratio, prev_cr)
-                        arrow = "▲" if change > 0 else ("▼" if change < 0 else "─")
-                        metrics_data["Change"].append(f"{arrow} {abs(change):.1f}%")
+                        metrics_data["Previous"].append(f"{prev_cr:.2f}")
                     else:
-                        metrics_data["Change"].append("─")
+                        metrics_data["Previous"].append("N/A")
 
                 if metrics_data["Metric"]:
                     df_quality = pd.DataFrame(metrics_data)
@@ -779,36 +800,30 @@ def show_individual_stock_analysis(df: pd.DataFrame):
                 metrics_data = {
                     "Metric": [],
                     "Current": [],
-                    "Change": []
+                    "Previous": []
                 }
 
                 # Revenue Growth
                 if revenue_growth is not None:
                     revenue_growth_pct = revenue_growth * 100  # Convert to percentage
-                    metrics_data["Metric"].append("Revenue Growth")
+                    metrics_data["Metric"].append("Revenue Growth (YoY)")
                     metrics_data["Current"].append(f"{revenue_growth_pct:+.1f}%")
-
                     if previous_fundamentals and previous_fundamentals[14] is not None:
-                        prev_rev_growth = previous_fundamentals[14] * 100
-                        change = calc_change(revenue_growth_pct, prev_rev_growth)
-                        arrow = "▲" if change > 0 else ("▼" if change < 0 else "─")
-                        metrics_data["Change"].append(f"{arrow} {abs(change):.1f}pp")
+                        prev_rev = previous_fundamentals[14] * 100
+                        metrics_data["Previous"].append(f"{prev_rev:+.1f}%")
                     else:
-                        metrics_data["Change"].append("─")
+                        metrics_data["Previous"].append("N/A")
 
                 # Earnings Growth
                 if earnings_growth is not None:
                     earnings_growth_pct = earnings_growth * 100  # Convert to percentage
-                    metrics_data["Metric"].append("EPS Growth")
+                    metrics_data["Metric"].append("EPS Growth (YoY)")
                     metrics_data["Current"].append(f"{earnings_growth_pct:+.1f}%")
-
                     if previous_fundamentals and previous_fundamentals[15] is not None:
-                        prev_earn_growth = previous_fundamentals[15] * 100
-                        change = calc_change(earnings_growth_pct, prev_earn_growth)
-                        arrow = "▲" if change > 0 else ("▼" if change < 0 else "─")
-                        metrics_data["Change"].append(f"{arrow} {abs(change):.1f}pp")
+                        prev_eps = previous_fundamentals[15] * 100
+                        metrics_data["Previous"].append(f"{prev_eps:+.1f}%")
                     else:
-                        metrics_data["Change"].append("─")
+                        metrics_data["Previous"].append("N/A")
 
                 if metrics_data["Metric"]:
                     df_growth = pd.DataFrame(metrics_data)

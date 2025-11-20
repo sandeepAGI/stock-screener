@@ -1,11 +1,67 @@
 # StockAnalyzer Pro - Current Status & Development Guide
-**Last Updated:** November 20, 2025
+**Last Updated:** November 20, 2025 (Evening Session)
 **Branch:** main
 **Purpose:** Consolidated documentation for current system state and development priorities
 
 ## 🎯 RECENT ACCOMPLISHMENTS
 
-### ✅ LATEST UPDATES (November 20, 2025):
+### ✅ LATEST UPDATES (November 20, 2025 - Evening Session):
+
+1. **News Collector Yahoo Finance API Fix** - ✅ **COMPLETED**: Fixed broken news collection
+   - **Problem Discovered:** Yahoo Finance changed API structure around Nov 19-20
+     - Old structure: `article['title']` (flat)
+     - New structure: `article['content']['title']` (nested)
+   - **Impact:** 50,050 news articles collected with empty titles (100% broken)
+   - **Investigation:** Created diagnostic script to understand new API format
+   - **Solution Implemented:**
+     - Updated `collectors.py` to extract from nested structure
+     - Fixed `refresh_news_only()` method (line 566-607)
+     - Fixed `_get_news_headlines()` method (line 186-193)
+     - Added UI fallback for existing broken articles
+   - **Cleanup Executed:**
+     - Deleted 50,050 broken articles from database
+     - Re-collected 17,790 clean articles with proper titles
+     - Average title length: 68.8 characters (vs 0 before)
+     - Collection time: 2.6 minutes for full refresh
+   - **Database State:** 100% clean - 0 empty titles, 17,790 valid articles
+
+2. **Batch Sentiment Processing Fix** - ✅ **COMPLETED**: Fixed CLI batch submission
+   - **Problem:** `smart_refresh.py --process-sentiment` failed with "AttributeError: 'UnifiedBulkProcessor' object has no attribute 'submit_bulk_batch'"
+   - **Root Cause:** Missing method implementation in UnifiedBulkProcessor
+   - **Solution Implemented:**
+     - Added `submit_bulk_batch()` method to handle direct batch submission
+     - Added `retrieve_and_apply_results()` alias method for CLI compatibility
+     - Fixed constructor to use API key from environment
+     - Fixed data structure mapping (record_id vs id, content vs summary)
+   - **Result:** Successfully submitted batch of 5,033 news articles for sentiment analysis
+   - **Batch ID:** msgbatch_01ArxDshdW8FRYgSPs6JAwSK (processing in background)
+
+3. **Individual Stock Analysis UX Improvements** - ✅ **COMPLETED**: Better metrics display
+   - **Problem:** "Change from Last" column showed misleading 0% for quarterly metrics
+   - **Analysis:** Fundamental metrics only update quarterly (earnings reports), not daily
+     - P/E, EPS, ROE → Update with quarterly earnings
+     - Current Price, Market Cap → Update daily (when collected)
+     - Our collection frequency: Every 5-10 days (ad-hoc)
+   - **Solution:** Replaced "Change from Last" with "Previous" column showing actual historical values
+   - **Enhanced Header:**
+     - Before: `📅 Latest Data: 2025-11-20`
+     - After: `📅 Current: 2025-11-20 | 📅 Previous: 2025-11-19 | 🕒 Last Updated: Today`
+   - **Benefits:**
+     - More informative - see actual historical values, not just percentage changes
+     - Honest about update frequency - sets proper expectations
+     - Better context - understand trend direction at a glance
+   - **Files Modified:**
+     - `analytics_dashboard.py` - Updated all metric sections (Fundamental, Quality, Growth)
+     - Fixed timestamp parsing for "Last Updated" display (handles microseconds)
+
+4. **Peer Comparison Enhancement** - ✅ **COMPLETED**: Dual-level peer analysis
+   - **Added:** Industry column to stock data query
+   - **Enhanced:** Industry Peers section (direct competitors in same industry)
+   - **Enhanced:** Sector Peers section (broader context, top performers in sector)
+   - **Display:** Table for industry peers, table + chart for sector peers
+   - **Result:** Users can now see both narrow (industry) and broad (sector) competitive context
+
+### ✅ EARLIER UPDATES (November 20, 2025 - Morning Session):
 1. **Reddit Data Quality Overhaul** - ✅ **COMPLETED**: Major cleanup of false positive posts
    - **Issue Discovered:** 860 Reddit posts (18.1%) were false positives due to substring matching
    - **Root Cause:** Ticker symbols like A, IT, ON, SO, NOW matched common words ("a", "it", "on", etc.)

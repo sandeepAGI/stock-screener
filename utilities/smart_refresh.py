@@ -471,7 +471,7 @@ def main():
         # Handle batch processing operations
         if args.finalize_batch:
             print(f"\n🎯 Finalizing batch: {args.finalize_batch}")
-            bulk_processor = UnifiedBulkProcessor(db_manager)
+            bulk_processor = UnifiedBulkProcessor()  # Uses API key from environment
             success = bulk_processor.retrieve_and_apply_results(args.finalize_batch)
             if success:
                 print("✅ Batch results retrieved and applied successfully")
@@ -482,7 +482,7 @@ def main():
 
         if args.process_sentiment:
             print("\n🔄 Processing sentiment batch...")
-            bulk_processor = UnifiedBulkProcessor(db_manager)
+            bulk_processor = UnifiedBulkProcessor()  # Uses API key from environment
 
             # Get unprocessed items
             unprocessed_items = db_manager.get_unprocessed_items_for_batch()
