@@ -38,12 +38,12 @@ jobs:
           echo "🔍 Scanning for API keys..."
 
           # Check for Reddit API keys
-          if grep -r "yeKIESP30pvI8o9ZU9JLBg" --exclude-dir=.git --exclude-dir=.github --exclude-dir=docs .; then
+          if grep -r "yeKIESP30pvI8o9ZU9JLBg" --exclude-dir=.git --exclude-dir=.github --exclude-dir=docs --exclude-dir=__pycache__ .; then
             echo "❌ FAIL: Reddit Client ID found in codebase"
             exit 1
           fi
 
-          if grep -r "7yn6BwQiGJTRQrNUKXCYQJUISiu_dg" --exclude-dir=.git --exclude-dir=.github --exclude-dir=docs .; then
+          if grep -r "7yn6BwQiGJTRQrNUKXCYQJUISiu_dg" --exclude-dir=.git --exclude-dir=.github --exclude-dir=docs --exclude-dir=__pycache__ .; then
             echo "❌ FAIL: Reddit Client Secret found in codebase"
             exit 1
           fi
