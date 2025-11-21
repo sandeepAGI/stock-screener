@@ -39,8 +39,8 @@ a = Analysis(
         # Logo file (if exists)
         ('src/data/Logo-Element-Retina.png', 'src/data'),
 
-        # Configuration template (not actual config with keys!)
-        ('config.yaml.example', '.') if os.path.exists('config.yaml.example') else None,
+        # .env.example template (shows users what keys are needed)
+        ('.env.example', '.'),
 
         # Streamlit dependencies
         *streamlit_datas,
