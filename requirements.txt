@@ -7,6 +7,7 @@ requests>=2.31.0           # HTTP requests
 plotly>=5.15.0             # Interactive charts
 python-dotenv>=1.0.0       # Environment variables
 keyring>=24.0.0            # Secure API key storage (macOS Keychain)
+pyyaml>=6.0                # YAML configuration files
 
 # Sentiment Analysis
 textblob>=0.17.1           # Basic sentiment analysis
