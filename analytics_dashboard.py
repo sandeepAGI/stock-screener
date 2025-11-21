@@ -21,6 +21,15 @@ import time
 # Add project root to path for data collection imports
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
+# Import API configuration UI components
+from src.ui.api_config_ui import (
+    initialize_api_key_manager,
+    check_first_launch,
+    render_first_launch_wizard,
+    render_api_settings_page,
+    render_api_status_sidebar
+)
+
 # Page configuration
 st.set_page_config(
     page_title="Stock Outlier Analysis",
@@ -2520,6 +2529,18 @@ def show_data_management():
 
 
 def main():
+    # Initialize API Key Manager
+    initialize_api_key_manager()
+
+    # Check for first launch and show wizard if needed
+    if 'setup_complete' not in st.session_state:
+        st.session_state.setup_complete = not check_first_launch()
+
+    # Show first-launch wizard if API keys are not configured
+    if not st.session_state.setup_complete:
+        render_first_launch_wizard()
+        return
+
     st.sidebar.title("📊 Stock Outlier Analysis")
 
     # Initialize session state for slider values
@@ -2603,6 +2624,9 @@ def main():
             st.session_state.reset_weights = True
             st.rerun()
 
+        # API Status Indicators
+        render_api_status_sidebar()
+
     # Header with logo and brand styling
     try:
         # Create inline header with logo matching font size
@@ -2634,7 +2658,7 @@ def main():
         return
 
     # Create tabs for different views
-    tab1, tab2, tab3, tab4 = st.tabs(["📈 Rankings", "📊 Individual Analysis", "🗄️ Data Management", "📚 Methodology"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["📈 Rankings", "📊 Individual Analysis", "🗄️ Data Management", "📚 Methodology", "⚙️ API Settings"])
 
     with tab1:
         # Check if weights have been adjusted
@@ -2903,6 +2927,9 @@ def main():
 
     with tab4:
         show_methodology_guide()
+
+    with tab5:
+        render_api_settings_page()
 
 if __name__ == "__main__":
     main()

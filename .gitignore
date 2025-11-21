@@ -29,6 +29,10 @@ ENV/
 # Environment Variables
 .env
 
+# API Key Storage (user-provided credentials - never commit!)
+.stockanalyzer/
+credentials.enc
+
 # Database
 data/*.db
 data/*.sqlite

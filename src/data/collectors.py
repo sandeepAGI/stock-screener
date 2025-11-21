@@ -222,8 +222,9 @@ class RedditCollector:
     Collector for Reddit sentiment data with enhanced validation to prevent false positives
     """
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: Dict[str, Any], api_key_manager=None):
         self.config = config
+        self.api_key_manager = api_key_manager
         self.subreddits = config.get('data_sources', {}).get('reddit', {}).get('subreddits', ['investing', 'stocks'])
         self.rate_limit = config.get('data_sources', {}).get('reddit', {}).get('rate_limit_per_minute', 60)
 
@@ -231,15 +232,35 @@ class RedditCollector:
         self.company_names = self._load_company_names()
 
         # Initialize Reddit API with rate limiting configuration
+        self.reddit = None
         try:
-            creds = get_reddit_credentials()
-            self.reddit = praw.Reddit(
-                client_id=creds['client_id'],
-                client_secret=creds['client_secret'],
-                user_agent=creds['user_agent'],
-                ratelimit_seconds=300  # Allow up to 5 min wait for rate limit recovery
-            )
-            logger.info("Reddit API initialized successfully")
+            # Try API Key Manager first (user-provided keys)
+            if api_key_manager:
+                from src.utils.api_key_manager import APIKeyManager
+                if api_key_manager.has_reddit_credentials():
+                    client_id = api_key_manager.get_api_key(APIKeyManager.REDDIT_CLIENT_ID)
+                    client_secret = api_key_manager.get_api_key(APIKeyManager.REDDIT_CLIENT_SECRET)
+                    user_agent = api_key_manager.get_api_key(APIKeyManager.REDDIT_USER_AGENT)
+
+                    self.reddit = praw.Reddit(
+                        client_id=client_id,
+                        client_secret=client_secret,
+                        user_agent=user_agent,
+                        ratelimit_seconds=300  # Allow up to 5 min wait for rate limit recovery
+                    )
+                    logger.info("Reddit API initialized successfully with user-provided credentials")
+                else:
+                    logger.warning("Reddit credentials not configured in API Key Manager")
+            # Fallback to .env for development/testing
+            else:
+                creds = get_reddit_credentials()
+                self.reddit = praw.Reddit(
+                    client_id=creds['client_id'],
+                    client_secret=creds['client_secret'],
+                    user_agent=creds['user_agent'],
+                    ratelimit_seconds=300
+                )
+                logger.info("Reddit API initialized with .env credentials (development mode)")
         except Exception as e:
             logger.error(f"Failed to initialize Reddit API: {str(e)}")
             self.reddit = None
@@ -406,17 +427,26 @@ class DataCollectionOrchestrator:
     """
     Orchestrates data collection from multiple sources
     """
-    
-    def __init__(self, config_path: Optional[str] = None):
+
+    def __init__(self, config_path: Optional[str] = None, api_key_manager=None):
         self.config = load_config(config_path)
+        self.api_key_manager = api_key_manager
+
+        # Always initialize Yahoo collector (doesn't require API keys)
         self.yahoo_collector = YahooFinanceCollector(self.config)
-        self.reddit_collector = RedditCollector(self.config)
+
+        # Initialize Reddit collector (with or without API keys)
+        self.reddit_collector = RedditCollector(self.config, api_key_manager)
+
+        # Initialize database and universe manager
         self.universe_manager = StockUniverseManager()
         self.db_manager = DatabaseManager()
         self.db_manager.connect()
         self.db_manager.create_tables()
-        self.sentiment_analyzer = SentimentAnalyzer()
-        self.bulk_sentiment_processor = BulkSentimentProcessor()
+
+        # Initialize sentiment analyzer (with or without API keys)
+        self.sentiment_analyzer = SentimentAnalyzer(api_key_manager=api_key_manager)
+        self.bulk_sentiment_processor = BulkSentimentProcessor(api_key_manager=api_key_manager)
         
     def collect_complete_dataset(self, symbols: List[str]) -> Dict[str, StockData]:
         """

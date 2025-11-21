@@ -1,5 +1,5 @@
 # StockAnalyzer Pro - Development Guide for Claude
-**Last Updated:** November 20, 2025
+**Last Updated:** November 20, 2025 (Late Session)
 **Purpose:** Quick reference for AI assistant working on this codebase
 
 ---
@@ -101,12 +101,15 @@ If this file grows beyond 400 lines, it's time to audit and move historical cont
 - ✅ Bulk sentiment processing (Anthropic Batch API)
 - ✅ All 4 calculators (Fundamental, Quality, Growth, Sentiment)
 - ✅ Composite scoring (40/25/20/15 weighting)
-- ✅ Dashboard UI (`analytics_dashboard.py`)
+- ✅ Dashboard UI (`analytics_dashboard.py`) with first-launch wizard
 - ✅ CLI tools (`smart_refresh.py`, `batch_monitor.py`)
+- ✅ API Key Manager (macOS Keychain integration)
+- ✅ macOS application bundling (PyInstaller)
+- ✅ CI/CD pipeline (GitHub Actions, automated builds & releases)
+- ✅ Complete test suite (38 tests: 22 unit + 16 integration)
 
 ### **Current Issues**
-- Dashboard fragmentation: `streamlit_app.py` vs `analytics_dashboard.py`
-- Need API key migration for production distribution
+- Dashboard fragmentation: `streamlit_app.py` vs `analytics_dashboard.py` (low priority)
 
 ---
 
@@ -140,6 +143,11 @@ Database (with sentiment) ─→ Calculators ─→ Composite Scores ─→ Dash
 ### **Project Structure**
 ```
 stock-outlier/
+├── .github/
+│   └── workflows/              # CI/CD pipelines
+│       ├── test-on-main.yml
+│       ├── promote-to-prod.yml
+│       └── build-release.yml
 ├── src/
 │   ├── calculations/           # Score calculation engines
 │   ├── data/                   # Data collection and storage
@@ -147,7 +155,16 @@ stock-outlier/
 │   │   ├── sentiment_analyzer.py
 │   │   ├── unified_bulk_processor.py
 │   │   └── database.py
+│   ├── ui/                     # UI components
+│   │   ├── __init__.py
+│   │   └── api_config_ui.py   # First-launch wizard
+│   ├── utils/                  # Utilities
+│   │   ├── api_key_manager.py # macOS Keychain integration
+│   │   └── helpers.py
 │   └── analysis/               # Data quality analytics
+├── tests/                      # Test suite
+│   ├── test_api_key_manager.py
+│   └── test_phase2_integration.py
 ├── utilities/                  # CLI tools
 │   ├── smart_refresh.py        # Main data refresh tool
 │   ├── batch_monitor.py        # Background batch processor
@@ -157,6 +174,8 @@ stock-outlier/
 ├── data/
 │   └── stock_data.db          # SQLite database
 ├── analytics_dashboard.py      # PRIMARY dashboard
+├── launcher_macos.py           # macOS launcher
+├── StockAnalyzer.spec          # PyInstaller config
 └── streamlit_app.py           # LEGACY dashboard (to be archived)
 ```
 
@@ -210,28 +229,34 @@ Before marking any major feature complete:
 
 ## 🎯 Current Priorities
 
-### **Immediate: Production Distribution Preparation**
-**Status:** Planning complete, ready to implement
-**Documentation:** See `docs/IMPLEMENTATION_ROADMAP.md`
+### **✅ Production Distribution Ready**
+**Status:** Phase 2-5 COMPLETE (macOS version)
+**Key Achievements:**
+- ✅ API Key Security Migration complete (macOS Keychain)
+- ✅ macOS application bundling working (PyInstaller)
+- ✅ CI/CD pipeline operational (GitHub Actions)
+- ✅ Complete documentation suite
+- ✅ All 38 tests passing
 
-**Critical First Step: API Key Migration (4-6 hours)**
-- Implement user-provided API keys (Reddit + Claude)
-- Prevent bundling YOUR API credentials in executable
-- See `docs/API_KEY_MIGRATION.md` for details
+**What's Available:**
+- Automated builds via CI/CD
+- Manual builds via PyInstaller
+- DMG installer creation
+- First-launch wizard for API setup
+- Secure credential storage (macOS Keychain)
+- Complete user and developer documentation
 
-**Then: Build Standalone Executable (8-12 hours)**
-- Create launcher scripts for each platform
-- Configure PyInstaller for bundling
-- Test on clean machines
-- See `docs/CICD_PIPELINE.md` for automation
+**To Create Release:**
+- Option A: Use CI/CD (GitHub Actions → Promote to Prod)
+- Option B: Manual build (see `docs/BUILD_AND_DISTRIBUTE.md`)
+- Option C: Follow checklist (see `docs/DEPLOYMENT_CHECKLIST.md`)
 
-### **Ongoing: Dashboard Consolidation**
-**Status:** In planning
-**Goal:** Single unified dashboard
-
-- Migrate remaining features from `streamlit_app.py`
-- Archive legacy code
-- Update launchers and documentation
+### **Future Enhancements (Not Prioritized)**
+- Dashboard consolidation (merge `streamlit_app.py`)
+- Portfolio tracking features
+- Alerts and notifications
+- Export to Excel/CSV
+- Windows/Linux support
 
 ---
 
@@ -293,7 +318,14 @@ sqlite3 data/stock_data.db "SELECT COUNT(*) FROM calculated_metrics WHERE compos
 
 ## ⚠️ Important Configuration Notes
 
-### **API Keys (in .env file)**
+### **API Keys**
+**Production (Bundled App):**
+- Stored in macOS Keychain via APIKeyManager
+- User-provided during first launch
+- Service name: "StockAnalyzer-Pro"
+- Fully secure, encrypted storage
+
+**Development (.env file):**
 ```bash
 # Reddit API (required for social sentiment)
 REDDIT_CLIENT_ID=your_client_id
@@ -302,10 +334,9 @@ REDDIT_USER_AGENT=StockAnalyzer:v1.0
 
 # Claude/Anthropic API (for sentiment analysis)
 NEWS_API_KEY=sk-ant-api03-...  # Actually Anthropic, not news API
-
-# Note: For production distribution, these MUST be user-provided
-# See docs/API_KEY_MIGRATION.md
 ```
+
+**Architecture:** APIKeyManager prioritizes Keychain → .env → graceful degradation
 
 ### **Quality Thresholds**
 Location: `src/calculations/composite.py:93-99`
@@ -325,10 +356,20 @@ Location: `src/calculations/composite.py:93-99`
 **Methodology:**
 - `METHODS.md` - Detailed scoring algorithms and calculations
 
+**For End Users:**
+- `docs/USER_INSTALLATION_GUIDE.md` - Complete installation guide
+- `README.md` - Quick start and overview
+
+**For Developers:**
+- `docs/GETTING_STARTED.md` - Developer setup and workflow
+- `docs/BUILD_AND_DISTRIBUTE.md` - Building and distribution guide
+- `docs/DEPLOYMENT_CHECKLIST.md` - Step-by-step deployment guide
+- `docs/CICD_USAGE.md` - CI/CD pipeline usage guide
+- `docs/CICD_QUICK_REFERENCE.md` - Quick reference card
+
 **Implementation Plans:**
-- `docs/IMPLEMENTATION_ROADMAP.md` - Production distribution plan (15-22 hours)
-- `docs/API_KEY_MIGRATION.md` - User-provided API key implementation
-- `docs/CICD_PIPELINE.md` - GitHub Actions automation
+- `docs/IMPLEMENTATION_ROADMAP.md` - Production distribution plan (COMPLETE)
+- `docs/API_KEY_MIGRATION.md` - API key security architecture (COMPLETE)
 
 **Historical:**
 - `docs/CHANGELOG.md` - Complete session history and bug fixes
@@ -376,6 +417,7 @@ Location: `src/calculations/composite.py:93-99`
 
 ---
 
-**Last System Verification:** November 20, 2025
+**Last System Verification:** November 20, 2025 (Late Session)
 **Database State:** Fully operational, 100% sentiment coverage
-**Next Major Milestone:** Production distribution with user-provided API keys
+**Production Status:** ✅ Ready for distribution (macOS)
+**Phases Complete:** Phase 1-5 (Core functionality, Security, Build system, CI/CD)
