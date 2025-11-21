@@ -39,6 +39,7 @@ jobs:
       - name: Run all tests
         run: |
           echo "🧪 Running all tests on main..."
+          export PYTHONPATH="${PYTHONPATH}:$(pwd)"
           python -m pytest tests/ -v --tb=short --ignore=tests/dev/
 
       - name: Security check

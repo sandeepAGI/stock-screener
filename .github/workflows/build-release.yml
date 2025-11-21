@@ -97,11 +97,13 @@ jobs:
       - name: Run API Key Manager tests
         run: |
           echo "🧪 Running API Key Manager tests..."
+          export PYTHONPATH="${PYTHONPATH}:$(pwd)"
           python -m pytest tests/test_api_key_manager.py -v
 
       - name: Run integration tests
         run: |
           echo "🧪 Running integration tests..."
+          export PYTHONPATH="${PYTHONPATH}:$(pwd)"
           python -m pytest tests/test_phase2_integration.py -v
 
       - name: Test summary
