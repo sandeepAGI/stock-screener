@@ -1,13 +1,10 @@
 name: Build and Release StockAnalyzer Pro
 
 on:
-  # Trigger on push to prod branch
+  # Trigger on push to prod branch or version tags
   push:
     branches:
       - prod
-
-  # Trigger on version tags
-  push:
     tags:
       - 'v*.*.*'
 
