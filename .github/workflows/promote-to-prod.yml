@@ -45,7 +45,7 @@ jobs:
         run: |
           echo "🔒 Running security checks..."
 
-          if grep -r "yeKIESP30pvI8o9ZU9JLBg" --exclude-dir=.git --exclude-dir=docs .; then
+          if grep -r "yeKIESP30pvI8o9ZU9JLBg" --exclude-dir=.git --exclude-dir=.github --exclude-dir=docs .; then
             echo "❌ FAIL: API keys found"
             exit 1
           fi
