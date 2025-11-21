@@ -84,6 +84,10 @@ class TestPhase2Integration:
         """Test DataCollectionOrchestrator integrates APIKeyManager correctly"""
         manager = APIKeyManager()
 
+        # Save a test Claude API key to manager (required for BulkSentimentProcessor)
+        test_key = os.getenv('NEWS_API_KEY') or "sk-ant-api03-test-key-12345"
+        manager.save_api_key('claude_api_key', test_key)
+
         # Should initialize successfully with APIKeyManager
         orchestrator = DataCollectionOrchestrator(api_key_manager=manager)
         assert orchestrator is not None
@@ -92,6 +96,9 @@ class TestPhase2Integration:
         # Check that collectors received the manager
         assert orchestrator.reddit_collector.api_key_manager == manager
         assert orchestrator.sentiment_analyzer.api_key_manager == manager
+
+        # Clean up test key
+        manager.delete_api_key('claude_api_key')
 
     def test_bulk_sentiment_processor_with_api_key_manager(self):
         """Test BulkSentimentProcessor accepts APIKeyManager"""
