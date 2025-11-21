@@ -1,0 +1,110 @@
+name: Promote Main to Prod
+
+on:
+  # Allow manual trigger only
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v1.0.0)'
+        required: true
+        type: string
+      create_release:
+        description: 'Create GitHub Release after build'
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: write  # Required to push to prod branch and create tags
+
+jobs:
+  verify-tests:
+    name: Verify Tests on Main
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout main branch
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov
+
+      - name: Run Phase 2 tests
+        run: |
+          echo "🧪 Running Phase 2 tests on main..."
+          export PYTHONPATH="${PYTHONPATH}:$(pwd)"
+          python -m pytest tests/test_api_key_manager.py tests/test_phase2_integration.py -v --tb=short
+
+      - name: Security check
+        run: |
+          echo "🔒 Running security checks..."
+
+          if grep -r "yeKIESP30pvI8o9ZU9JLBg" --exclude-dir=.git --exclude-dir=.github --exclude-dir=docs --exclude-dir=__pycache__ .; then
+            echo "❌ FAIL: API keys found"
+            exit 1
+          fi
+
+          echo "✅ Security checks passed"
+
+  merge-to-prod:
+    name: Merge Main to Prod
+    runs-on: ubuntu-latest
+    needs: verify-tests
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Merge main to prod
+        run: |
+          echo "🔀 Merging main to prod..."
+
+          # Checkout prod branch
+          git checkout prod
+
+          # Merge main into prod
+          git merge origin/main --no-ff -m "chore: promote main to prod for release ${{ github.event.inputs.version }}"
+
+          # Push to prod
+          git push origin prod
+
+          echo "✅ Successfully merged main to prod"
+
+      - name: Create version tag
+        run: |
+          echo "🏷️ Creating version tag: ${{ github.event.inputs.version }}"
+
+          git tag -a ${{ github.event.inputs.version }} -m "Release ${{ github.event.inputs.version }}"
+          git push origin ${{ github.event.inputs.version }}
+
+          echo "✅ Tag created and pushed"
+
+  trigger-build:
+    name: Trigger Build on Prod
+    runs-on: ubuntu-latest
+    needs: merge-to-prod
+
+    steps:
+      - name: Wait for build workflow
+        run: |
+          echo "⏳ Build workflow will be triggered automatically by the tag push"
+          echo "🔗 Check Actions tab for build progress"
+          echo "✅ Promotion to prod completed!"

@@ -43,24 +43,41 @@ class SentimentAnalyzer:
     Enhanced with Claude LLM for superior financial context understanding
     """
 
-    def __init__(self, anthropic_api_key: Optional[str] = None, use_llm: bool = True):
+    def __init__(self, anthropic_api_key: Optional[str] = None, use_llm: bool = True, api_key_manager=None):
         self.vader = SentimentIntensityAnalyzer()
         self.use_llm = use_llm and ANTHROPIC_AVAILABLE
         self.claude_client = None
+        self.api_key_manager = api_key_manager
 
         # Initialize Claude client if available
         if self.use_llm:
-            api_key = anthropic_api_key or os.getenv('ANTHROPIC_API_KEY') or os.getenv('NEWS_API_KEY')
-            if api_key:
-                try:
-                    self.claude_client = anthropic.Anthropic(api_key=api_key)
-                    logger.info("Claude LLM sentiment analysis enabled")
-                except Exception as e:
-                    logger.warning(f"Failed to initialize Claude client: {e}")
+            # Try API Key Manager first (user-provided keys)
+            if api_key_manager:
+                from src.utils.api_key_manager import APIKeyManager
+                if api_key_manager.has_claude_credentials():
+                    api_key = api_key_manager.get_api_key(APIKeyManager.CLAUDE_API_KEY)
+                    try:
+                        self.claude_client = anthropic.Anthropic(api_key=api_key)
+                        logger.info("Claude LLM sentiment analysis enabled with user-provided credentials")
+                    except Exception as e:
+                        logger.warning(f"Failed to initialize Claude client with user credentials: {e}")
+                        self.use_llm = False
+                else:
+                    logger.warning("Claude API key not configured in API Key Manager")
                     self.use_llm = False
+            # Fallback to .env or parameter for development/testing
             else:
-                logger.warning("No Anthropic API key found. Set ANTHROPIC_API_KEY environment variable.")
-                self.use_llm = False
+                api_key = anthropic_api_key or os.getenv('ANTHROPIC_API_KEY') or os.getenv('NEWS_API_KEY')
+                if api_key:
+                    try:
+                        self.claude_client = anthropic.Anthropic(api_key=api_key)
+                        logger.info("Claude LLM sentiment analysis enabled with .env credentials (development mode)")
+                    except Exception as e:
+                        logger.warning(f"Failed to initialize Claude client: {e}")
+                        self.use_llm = False
+                else:
+                    logger.warning("No Anthropic API key found. Set ANTHROPIC_API_KEY environment variable.")
+                    self.use_llm = False
         
         # Financial keywords that modify sentiment
         self.positive_financial_terms = {

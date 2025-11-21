@@ -1,0 +1,338 @@
+name: Build and Release StockAnalyzer Pro
+
+on:
+  # Trigger on push to prod branch
+  push:
+    branches:
+      - prod
+
+  # Trigger on version tags
+  push:
+    tags:
+      - 'v*.*.*'
+
+  # Allow manual trigger
+  workflow_dispatch:
+    inputs:
+      create_release:
+        description: 'Create GitHub Release'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+permissions:
+  contents: write  # Required to create releases and upload artifacts
+
+jobs:
+  # Security check job - runs first to ensure no API keys are in code
+  security-check:
+    name: Security Verification
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check for API keys in codebase
+        run: |
+          echo "🔍 Scanning for API keys..."
+
+          # Check for Reddit API keys
+          if grep -r "yeKIESP30pvI8o9ZU9JLBg" --exclude-dir=.git --exclude-dir=.github --exclude-dir=docs --exclude-dir=__pycache__ .; then
+            echo "❌ FAIL: Reddit Client ID found in codebase"
+            exit 1
+          fi
+
+          if grep -r "7yn6BwQiGJTRQrNUKXCYQJUISiu_dg" --exclude-dir=.git --exclude-dir=.github --exclude-dir=docs --exclude-dir=__pycache__ .; then
+            echo "❌ FAIL: Reddit Client Secret found in codebase"
+            exit 1
+          fi
+
+          # Check for Claude API keys (pattern match)
+          if grep -r "sk-ant-api03-" --exclude-dir=.git --exclude-dir=.github --exclude-dir=docs --exclude="*.example" --exclude="*.md" .; then
+            echo "❌ FAIL: Claude API key pattern found in codebase"
+            exit 1
+          fi
+
+          # Check that .env is not committed
+          if [ -f ".env" ]; then
+            echo "❌ FAIL: .env file should not be in repository"
+            exit 1
+          fi
+
+          echo "✅ PASS: No API keys found in codebase"
+
+      - name: Verify .env.example is clean
+        run: |
+          echo "🔍 Checking .env.example..."
+
+          if grep -E "sk-ant-api03-[A-Za-z0-9]" .env.example; then
+            echo "❌ FAIL: Real API key found in .env.example"
+            exit 1
+          fi
+
+          echo "✅ PASS: .env.example is clean"
+
+  # Test job - runs tests to ensure quality
+  test:
+    name: Run Tests
+    runs-on: macos-latest
+    needs: security-check
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov
+
+      - name: Run API Key Manager tests
+        run: |
+          echo "🧪 Running API Key Manager tests..."
+          export PYTHONPATH="${PYTHONPATH}:$(pwd)"
+          python -m pytest tests/test_api_key_manager.py -v
+
+      - name: Run integration tests
+        run: |
+          echo "🧪 Running integration tests..."
+          export PYTHONPATH="${PYTHONPATH}:$(pwd)"
+          python -m pytest tests/test_phase2_integration.py -v
+
+      - name: Test summary
+        run: |
+          echo "✅ All tests passed!"
+
+  # Build macOS application
+  build-macos:
+    name: Build macOS Application
+    runs-on: macos-latest
+    needs: test
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build application
+        run: |
+          echo "🔨 Building StockAnalyzer Pro for macOS..."
+          pyinstaller StockAnalyzer.spec
+
+          echo "✅ Build completed"
+          ls -lh dist/
+
+      - name: Verify build output
+        run: |
+          echo "🔍 Verifying build..."
+
+          # Check that app bundle was created
+          if [ ! -d "dist/StockAnalyzer.app" ]; then
+            echo "❌ FAIL: StockAnalyzer.app not found"
+            exit 1
+          fi
+
+          echo "✅ Build verification passed"
+
+      - name: Security check on built app
+        run: |
+          echo "🔒 Scanning built application for API keys..."
+
+          # Search for API keys in the built bundle
+          cd dist/
+
+          if grep -r "yeKIESP30pvI8o9ZU9JLBg" StockAnalyzer.app 2>/dev/null; then
+            echo "❌ FAIL: Reddit Client ID found in built app"
+            exit 1
+          fi
+
+          if grep -r "7yn6BwQiGJTRQrNUKXCYQJUISiu_dg" StockAnalyzer.app 2>/dev/null; then
+            echo "❌ FAIL: Reddit Client Secret found in built app"
+            exit 1
+          fi
+
+          # Check for .env files
+          if find StockAnalyzer.app -name ".env" -o -name ".env.*" | grep -v ".env.example"; then
+            echo "❌ FAIL: .env file found in built app"
+            exit 1
+          fi
+
+          echo "✅ PASS: No API keys found in built application"
+
+      - name: Create DMG installer
+        run: |
+          echo "📦 Creating DMG installer..."
+
+          # Get version from git tag or use date
+          if [[ $GITHUB_REF == refs/tags/* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/}
+          else
+            VERSION="dev-$(date +%Y%m%d-%H%M%S)"
+          fi
+
+          DMG_NAME="StockAnalyzer-macOS-${VERSION}.dmg"
+
+          hdiutil create -volname "StockAnalyzer Pro" \
+            -srcfolder dist/StockAnalyzer.app \
+            -ov -format UDZO \
+            "$DMG_NAME"
+
+          echo "✅ DMG created: $DMG_NAME"
+          ls -lh *.dmg
+
+          # Save DMG name for later steps
+          echo "DMG_NAME=$DMG_NAME" >> $GITHUB_ENV
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-build
+          path: |
+            *.dmg
+            dist/StockAnalyzer.app/
+          retention-days: 30
+
+      - name: Build summary
+        run: |
+          echo "✅ macOS build completed successfully"
+          echo "📦 Artifacts:"
+          ls -lh *.dmg
+
+  # Create GitHub Release (only for tags or manual trigger)
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: build-macos
+    if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && github.event.inputs.create_release == 'true')
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download macOS build
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-build
+
+      - name: Extract version
+        id: get_version
+        run: |
+          if [[ $GITHUB_REF == refs/tags/* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/}
+          else
+            VERSION="v$(date +%Y.%m.%d)"
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          cat > release_notes.md <<'EOF'
+          ## StockAnalyzer Pro - macOS Release
+
+          ### 🎉 Features
+          - 📊 Multi-factor stock analysis (Fundamental, Quality, Growth, Sentiment)
+          - 🤖 AI-powered sentiment analysis using Claude
+          - 📱 Social media sentiment tracking via Reddit
+          - 🔐 Secure API key storage in macOS Keychain
+          - 📈 Interactive dashboard with real-time rankings
+
+          ### 📥 Installation
+          1. Download `StockAnalyzer-macOS-*.dmg` below
+          2. Open the DMG file
+          3. Drag `StockAnalyzer.app` to your Applications folder
+          4. Right-click and select "Open" for first launch (macOS security)
+          5. Follow the setup wizard to configure your API keys
+
+          ### 🔑 Requirements
+          - **macOS:** 10.13 (High Sierra) or later
+          - **Reddit API:** Free credentials from reddit.com/prefs/apps
+          - **Claude API:** Paid API key from console.anthropic.com
+
+          ### 📚 Documentation
+          - [Installation Guide](docs/USER_INSTALLATION_GUIDE.md)
+          - [Build Guide](docs/BUILD_AND_DISTRIBUTE.md)
+
+          ### 🔒 Security
+          - ✅ No API keys bundled
+          - ✅ User credentials stored securely in macOS Keychain
+          - ✅ All code open source and auditable
+
+          ### 💰 Cost Information
+          - **Reddit API:** FREE
+          - **Claude API:** Usage-based, you control costs
+            - Small portfolios: $1-5 initial setup
+            - Monthly updates: Cents to a few dollars
+            - 50% discount via Batch API
+
+          ### 🐛 Known Issues
+          None at this time
+
+          ### 📞 Support
+          Report issues at: https://github.com/${{ github.repository }}/issues
+          EOF
+
+          cat release_notes.md
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.get_version.outputs.VERSION }}
+          name: StockAnalyzer Pro ${{ steps.get_version.outputs.VERSION }}
+          body_path: release_notes.md
+          files: |
+            *.dmg
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Release summary
+        run: |
+          echo "✅ GitHub Release created successfully"
+          echo "🎉 StockAnalyzer Pro ${{ steps.get_version.outputs.VERSION }} is now available!"
+
+  # Notification job (optional - for successful builds)
+  notify:
+    name: Build Status Notification
+    runs-on: ubuntu-latest
+    needs: [security-check, test, build-macos]
+    if: always()
+
+    steps:
+      - name: Build status summary
+        run: |
+          echo "📊 Build Summary:"
+          echo "Security Check: ${{ needs.security-check.result }}"
+          echo "Tests: ${{ needs.test.result }}"
+          echo "Build: ${{ needs.build-macos.result }}"
+
+          if [ "${{ needs.security-check.result }}" == "success" ] && \
+             [ "${{ needs.test.result }}" == "success" ] && \
+             [ "${{ needs.build-macos.result }}" == "success" ]; then
+            echo "✅ All jobs completed successfully!"
+          else
+            echo "❌ Some jobs failed. Check the logs above."
+            exit 1
+          fi

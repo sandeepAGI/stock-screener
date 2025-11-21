@@ -57,18 +57,33 @@ class BulkSentimentProcessor:
     Efficient bulk sentiment processing using Anthropic's Message Batches API
     """
 
-    def __init__(self, anthropic_api_key: Optional[str] = None):
+    def __init__(self, anthropic_api_key: Optional[str] = None, api_key_manager=None):
         """
         Initialize bulk sentiment processor
 
         Args:
-            anthropic_api_key: Anthropic API key (or from environment)
+            anthropic_api_key: Anthropic API key (fallback for development)
+            api_key_manager: APIKeyManager instance for user-provided credentials
         """
-        self.api_key = anthropic_api_key or os.getenv('NEWS_API_KEY') or os.getenv('ANTHROPIC_API_KEY')
+        self.api_key_manager = api_key_manager
+
+        # Get API key from manager first, then fallback to parameter/env
+        self.api_key = None
+        if api_key_manager:
+            from src.utils.api_key_manager import APIKeyManager
+            if api_key_manager.has_claude_credentials():
+                self.api_key = api_key_manager.get_api_key(APIKeyManager.CLAUDE_API_KEY)
+                logger.info("Using Claude API key from API Key Manager for bulk processing")
+
+        # Fallback to .env for development/testing
+        if not self.api_key:
+            self.api_key = anthropic_api_key or os.getenv('NEWS_API_KEY') or os.getenv('ANTHROPIC_API_KEY')
+            if self.api_key:
+                logger.info("Using Claude API key from .env for bulk processing (development mode)")
 
         if not self.api_key:
             logger.error("❌ No Anthropic API key provided - bulk processing requires API key")
-            raise ValueError("Anthropic API key is required for bulk processing")
+            raise ValueError("Claude API key must be configured in API Key Manager or environment variables")
 
         if not ANTHROPIC_AVAILABLE:
             logger.error("❌ Anthropic library not available - install anthropic package")

@@ -29,22 +29,38 @@ class UnifiedBulkProcessor:
     Unified bulk sentiment processor using temporary table approach for efficient processing
     """
 
-    def __init__(self, anthropic_api_key: Optional[str] = None):
+    def __init__(self, anthropic_api_key: Optional[str] = None, api_key_manager=None):
         """
         Initialize unified bulk processor
 
         Args:
-            anthropic_api_key: Required Anthropic API key for Claude LLM processing
+            anthropic_api_key: Anthropic API key (fallback for development)
+            api_key_manager: APIKeyManager instance for user-provided credentials
         """
         self.db = DatabaseManager()
+        self.api_key_manager = api_key_manager
 
-        # Require API key - no fallback processing
-        api_key = anthropic_api_key or os.getenv('NEWS_API_KEY') or os.getenv('ANTHROPIC_API_KEY')
+        # Get API key from manager first, then fallback to parameter/env
+        api_key = None
+        if api_key_manager:
+            from src.utils.api_key_manager import APIKeyManager
+            if api_key_manager.has_claude_credentials():
+                api_key = api_key_manager.get_api_key(APIKeyManager.CLAUDE_API_KEY)
+                logger.info("Using Claude API key from API Key Manager")
+            else:
+                logger.warning("Claude API key not configured in API Key Manager")
+
+        # Fallback to .env for development/testing
+        if not api_key:
+            api_key = anthropic_api_key or os.getenv('NEWS_API_KEY') or os.getenv('ANTHROPIC_API_KEY')
+            if api_key:
+                logger.info("Using Claude API key from .env (development mode)")
+
         if not api_key:
             logger.error("❌ Anthropic API key is required for bulk sentiment processing")
-            raise ValueError("NEWS_API_KEY or ANTHROPIC_API_KEY environment variable or parameter is required")
+            raise ValueError("Claude API key must be configured in API Key Manager or environment variables")
 
-        self.bulk_processor = BulkSentimentProcessor(api_key)
+        self.bulk_processor = BulkSentimentProcessor(api_key, api_key_manager)
         self.batch_size = 25000  # Process all items in single batch (within 100k limit)
 
     def get_processing_status(self) -> Dict:

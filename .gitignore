@@ -29,6 +29,10 @@ ENV/
 # Environment Variables
 .env
 
+# API Key Storage (user-provided credentials - never commit!)
+.stockanalyzer/
+credentials.enc
+
 # Database
 data/*.db
 data/*.sqlite
@@ -71,9 +75,11 @@ htmlcov/
 # Claude Code cache
 .claude/
 
-# Debug/Test files (optional - comment out if you want to track them)
+# Debug files (optional - comment out if you want to track them)
 debug_*.py
-test_*.py
+# NOTE: test_*.py files in tests/ directory SHOULD be tracked
+# Only ignore test_ files in root directory
+/test_*.py
 
 # Temporary files
 *.tmp
@@ -89,6 +95,7 @@ backups/
 data/backups/
 *snapshot*.csv
 test_percentiles_results_*.csv
+*.db.backup_*
 
 # Chrome driver downloads (from webdriver-manager)
 ~/.wdm/

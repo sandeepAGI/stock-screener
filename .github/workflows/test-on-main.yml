@@ -1,0 +1,71 @@
+name: Test on Main Branch
+
+on:
+  # Run tests on every push to main
+  push:
+    branches:
+      - main
+
+  # Run tests on pull requests to main
+  pull_request:
+    branches:
+      - main
+
+  # Allow manual trigger
+  workflow_dispatch:
+
+jobs:
+  security-check:
+    name: Security Verification
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check for API keys
+        run: |
+          echo "🔍 Scanning for API keys..."
+
+          # Check for Reddit API keys
+          if grep -r "yeKIESP30pvI8o9ZU9JLBg" --exclude-dir=.git --exclude-dir=.github --exclude-dir=docs --exclude-dir=__pycache__ .; then
+            echo "❌ FAIL: Reddit Client ID found in codebase"
+            exit 1
+          fi
+
+          if grep -r "7yn6BwQiGJTRQrNUKXCYQJUISiu_dg" --exclude-dir=.git --exclude-dir=.github --exclude-dir=docs --exclude-dir=__pycache__ .; then
+            echo "❌ FAIL: Reddit Client Secret found in codebase"
+            exit 1
+          fi
+
+          echo "✅ PASS: No API keys found in codebase"
+
+  test:
+    name: Run All Tests
+    runs-on: macos-latest
+    needs: security-check
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov
+
+      - name: Run Phase 2 tests
+        run: |
+          echo "🧪 Running Phase 2 tests (API key management + integration)..."
+          export PYTHONPATH="${PYTHONPATH}:$(pwd)"
+          python -m pytest tests/test_api_key_manager.py tests/test_phase2_integration.py -v --tb=short
+
+      - name: Test summary
+        run: |
+          echo "✅ All tests passed on main branch!"
