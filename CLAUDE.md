@@ -335,8 +335,8 @@ Location: `src/calculations/composite.py:93-99`
 - `docs/archive/` - Archived documentation from previous versions
 
 **Testing:**
-- `TEST_PLAN.md` - Batch processing testing procedures
-- `BATCH_MONITOR_SETUP.md` - Background monitor setup
+- `docs/TEST_PLAN.md` - Batch processing testing procedures
+- `docs/BATCH_MONITOR_SETUP.md` - Background monitor setup
 
 ---
 

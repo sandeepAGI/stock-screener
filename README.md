@@ -321,11 +321,29 @@ pip install -r requirements.txt
 streamlit run analytics_dashboard.py
 ```
 
+## 📚 Documentation
+
+### For Users
+- **README.md** - This file (getting started, features, basic usage)
+- **METHODS.md** - Detailed scoring methodology and algorithms
+
+### For Developers & AI Assistants
+- **CLAUDE.md** - Current system state, architecture, development guidelines
+- **docs/CHANGELOG.md** - Complete session history and bug fixes
+- **docs/IMPLEMENTATION_ROADMAP.md** - Production distribution plan with phases
+- **docs/API_KEY_MIGRATION.md** - User-provided API key implementation guide
+- **docs/CICD_PIPELINE.md** - GitHub Actions automation guide
+- **docs/TEST_PLAN.md** - Testing procedures and validation
+- **docs/BATCH_MONITOR_SETUP.md** - Background batch monitor setup
+
+### Historical Reference
+- **docs/archive/** - Archived design docs, implementation notes, and completed planning
+
 ## 📞 Support
 
-**Technical Details:** See CLAUDE.md for current development status
-**Methodology:** See METHODS.md for calculation documentation
-**Configuration:** Check config/config.yaml for system settings
+**Issues:** Report bugs via GitHub Issues
+**Questions:** See documentation above for detailed guidance
+**Configuration:** Check `.env` file for API key settings
 
 ---
 
