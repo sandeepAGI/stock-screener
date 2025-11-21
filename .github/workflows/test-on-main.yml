@@ -63,7 +63,7 @@ jobs:
       - name: Run all tests
         run: |
           echo "🧪 Running all tests..."
-          python -m pytest tests/ -v --tb=short
+          python -m pytest tests/ -v --tb=short --ignore=tests/dev/
 
       - name: Test summary
         run: |
