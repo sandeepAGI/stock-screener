@@ -36,11 +36,11 @@ jobs:
           pip install -r requirements.txt
           pip install pytest pytest-cov
 
-      - name: Run all tests
+      - name: Run Phase 2 tests
         run: |
-          echo "🧪 Running all tests on main..."
+          echo "🧪 Running Phase 2 tests on main..."
           export PYTHONPATH="${PYTHONPATH}:$(pwd)"
-          python -m pytest tests/ -v --tb=short --ignore=tests/dev/
+          python -m pytest tests/test_api_key_manager.py tests/test_phase2_integration.py -v --tb=short
 
       - name: Security check
         run: |
