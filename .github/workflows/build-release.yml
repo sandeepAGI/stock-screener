@@ -140,6 +140,10 @@ jobs:
 
           DMG_NAME="StockAnalyzer-macOS-${VERSION}.dmg"
 
+          # Ensure all file operations are complete before creating DMG
+          sync
+          sleep 2
+
           hdiutil create -volname "StockAnalyzer Pro" \
             -srcfolder dist/StockAnalyzer.app \
             -ov -format UDZO \
