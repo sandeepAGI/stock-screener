@@ -23,6 +23,9 @@ on:
           - 'true'
           - 'false'
 
+permissions:
+  contents: write  # Required to create releases and upload artifacts
+
 jobs:
   # Security check job - runs first to ensure no API keys are in code
   security-check:
