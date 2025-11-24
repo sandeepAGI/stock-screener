@@ -66,6 +66,9 @@ a = Analysis(
 
         # Database
         'sqlite3',
+        'peewee',
+        'playhouse',
+        'playhouse.sqlite_ext',
 
         # Our modules
         'src.data.database',
