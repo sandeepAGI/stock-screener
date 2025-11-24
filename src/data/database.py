@@ -154,11 +154,22 @@ class DatabaseManager:
                 self.connection = None
         
         try:
-            self.connection = sqlite3.connect(
-                self.db_path, 
-                check_same_thread=False,
-                detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES
-            )
+            # In PyInstaller frozen apps, sqlite3 type converters don't work properly
+            # Disable automatic type conversion to avoid "not enough values to unpack" errors
+            import sys
+            if getattr(sys, 'frozen', False):
+                # Running in PyInstaller bundle - disable type conversion
+                self.connection = sqlite3.connect(
+                    self.db_path,
+                    check_same_thread=False
+                )
+            else:
+                # Running in development - enable type conversion
+                self.connection = sqlite3.connect(
+                    self.db_path,
+                    check_same_thread=False,
+                    detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES
+                )
             self.connection.row_factory = sqlite3.Row  # Enable column access by name
             logger.info(f"Connected to database: {self.db_path}")
             return True
