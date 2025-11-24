@@ -480,15 +480,35 @@ def show_individual_stock_analysis(df: pd.DataFrame):
             display_name = f"{row['symbol']} - {row['company_name']} (Score: {row['composite_score']:.1f})"
             stock_options[display_name] = row['symbol']
 
-        st.markdown("**💡 Search Tips:** Type ticker symbol or company name to quickly find stocks")
+        st.markdown("**💡 Search Tips:** Type ticker symbol or company name (case-insensitive)")
+
+        # Case-insensitive search filter
+        search_term = st.text_input(
+            "🔍 Quick Search:",
+            placeholder="Type ticker or company name...",
+            key="stock_search",
+            help="Search is case-insensitive"
+        )
+
+        # Filter options based on search term (case-insensitive)
+        if search_term:
+            filtered_options = {
+                k: v for k, v in stock_options.items()
+                if search_term.lower() in k.lower()
+            }
+            if not filtered_options:
+                st.warning(f"No stocks found matching '{search_term}'")
+                filtered_options = stock_options  # Show all if no matches
+        else:
+            filtered_options = stock_options
 
         selected_display = st.selectbox(
-            "🔍 Select a stock to analyze:",
-            options=list(stock_options.keys()),
-            help="Start typing to search. Sorted by composite score.",
+            "Select from filtered results:",
+            options=list(filtered_options.keys()),
+            help="Sorted by composite score.",
             key="stock_selector"
         )
-        selected_symbol = stock_options[selected_display]
+        selected_symbol = filtered_options[selected_display]
 
     with col2:
         st.metric("Total Stocks", len(df))
