@@ -8,7 +8,15 @@ for frozen PyInstaller apps.
 
 import sys
 import os
+import webbrowser
+import threading
+import time
 from streamlit.web import cli as stcli
+
+def open_browser():
+    """Open browser after a short delay to let Streamlit start"""
+    time.sleep(3)  # Wait for Streamlit to be ready
+    webbrowser.open('http://localhost:8501')
 
 if __name__ == "__main__":
     # Get the directory where this script is located
@@ -34,6 +42,10 @@ if __name__ == "__main__":
         "--server.enableCORS=true",
         "--global.developmentMode=false",
     ]
+
+    # Start browser opening in background thread
+    browser_thread = threading.Thread(target=open_browser, daemon=True)
+    browser_thread.start()
 
     # Run Streamlit
     sys.exit(stcli.main())

@@ -26,6 +26,10 @@ a = Analysis(
 
         # Source code
         ('src', 'src'),
+        ('utilities', 'utilities'),
+
+        # Configuration
+        ('config', 'config'),
 
         # Include .env.example as template
         ('.env.example', '.'),
