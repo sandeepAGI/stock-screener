@@ -44,6 +44,10 @@ a = Analysis(
         'streamlit',
         'streamlit.runtime',
         'streamlit.runtime.scriptrunner',
+        'streamlit.runtime.scriptrunner.magic_funcs',
+        'streamlit.runtime.scriptrunner.script_runner',
+        'streamlit.runtime.state',
+        'streamlit.runtime.caching',
         'streamlit.web',
         'streamlit.web.cli',
 
