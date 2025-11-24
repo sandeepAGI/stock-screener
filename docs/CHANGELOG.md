@@ -3,6 +3,171 @@
 
 ---
 
+## November 24, 2025 - PyInstaller Production Distribution (Phase 1 Complete)
+
+### PyInstaller macOS Bundle Implementation
+**Status:** ✅ COMPLETED
+**Outcome:** Working macOS .app bundle with auto-launching browser
+
+**Goal:** Create standalone macOS application for distribution without requiring Python installation
+
+### Implementation Details
+
+**Phase 1: Core Bundling (4 hours)**
+- Created `launcher.py` as programmatic entry point
+- Created `StockAnalyzer.spec` for PyInstaller configuration
+- Used launcher pattern to invoke Streamlit programmatically in frozen app
+- Resulted in 2.9GB .app bundle, 1.1GB DMG
+
+**Key Files Created:**
+- `launcher.py` - Entry point with programmatic Streamlit execution
+- `StockAnalyzer.spec` - PyInstaller configuration
+- `StockAnalyzer-macOS-v0.2.0.dmg` - Distributable DMG
+
+### Problems Encountered & Solutions
+
+**1. Missing Streamlit Runtime Modules**
+- **Error:** `ModuleNotFoundError: No module named 'streamlit.runtime.scriptrunner.magic_funcs'`
+- **Root Cause:** PyInstaller didn't auto-detect Streamlit's internal modules
+- **Solution:** Added to hiddenimports:
+  - `streamlit.runtime.scriptrunner.magic_funcs`
+  - `streamlit.runtime.scriptrunner.script_runner`
+  - `streamlit.runtime.state`
+  - `streamlit.runtime.caching`
+- **Commit:** `79f765e`
+
+**2. Missing Configuration Files**
+- **Error:** `FileNotFoundError: Configuration file not found: config/config.yaml`
+- **Root Cause:** `config/` directory not included in PyInstaller bundle
+- **Solution:** Added `('config', 'config')` to datas in spec file
+- **Commit:** `3e8be85`
+
+**3. Missing Utilities Directory**
+- **Error:** `No module named 'utilities'`
+- **Root Cause:** `utilities/` directory not bundled
+- **Solution:** Added `('utilities', 'utilities')` to datas in spec file
+- **Impact:** Fixed S&P 500 syncer initialization in Data Management tab
+- **Commit:** `3e8be85`
+
+**4. Browser Not Auto-Opening**
+- **Problem:** User had to manually navigate to localhost:8501
+- **Solution:** Added automatic browser opening using `webbrowser` module
+  - Background thread waits 3 seconds for Streamlit to start
+  - Opens browser to http://localhost:8501 automatically
+- **Commit:** `3e8be85`
+
+**5. SQLite Timestamp Conversion Error (CRITICAL)**
+- **Error:** `ValueError: not enough values to unpack (expected 2, got 1)` in peewee.py:223
+- **Symptom:** Occurred when using Individual Analysis or Data Management tabs
+- **Initial Wrong Fixes:**
+  - Added peewee imports (didn't help - wrong root cause)
+  - Added more hidden imports (didn't address real issue)
+- **Root Cause Analysis:**
+  - In `src/data/database.py:160`: `detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES`
+  - This enables automatic type conversion (strings → datetime objects)
+  - PyInstaller's frozen environment doesn't properly initialize sqlite3's type converter registry
+  - Type conversion system fails, causing "not enough values to unpack" during timestamp parsing
+- **Actual Solution:**
+  - Detect if running in frozen mode (`sys.frozen`)
+  - Disable type conversion for PyInstaller builds
+  - Timestamps returned as strings (reliable in both environments)
+  - Development mode still uses type conversion (better DX)
+- **Code Change:**
+  ```python
+  if getattr(sys, 'frozen', False):
+      # PyInstaller - disable type conversion
+      connection = sqlite3.connect(db_path, check_same_thread=False)
+  else:
+      # Development - enable type conversion
+      connection = sqlite3.connect(db_path, detect_types=PARSE_DECLTYPES|PARSE_COLNAMES)
+  ```
+- **Commit:** `0c91418`
+
+### Testing Results
+
+**✅ All Functionality Verified:**
+- App launches successfully from terminal and double-click
+- Browser opens automatically to dashboard
+- All 4 tabs work without errors:
+  - Overview tab ✅
+  - Individual Analysis tab ✅ (timestamp fix verified)
+  - Data Management tab ✅ (utilities + timestamp fix verified)
+  - Methodology tab ✅
+- Database connections stable
+- No ValueError or timestamp errors in production build
+
+### Distribution Artifacts
+
+**Created:**
+- `dist/StockAnalyzer.app` - macOS app bundle (2.9GB)
+- `StockAnalyzer-macOS-v0.2.0.dmg` - Compressed DMG (1.1GB)
+
+**DMG Contents:**
+- All Python dependencies bundled
+- Streamlit and dependencies included
+- src/, config/, utilities/ directories
+- No Python installation required
+
+### Technical Architecture
+
+**Launcher Pattern:**
+```
+User launches StockAnalyzer.app
+    ↓
+launcher.py (entry point)
+    ↓
+Detects frozen mode (sys.frozen)
+    ↓
+Starts browser opening thread (background)
+    ↓
+Invokes streamlit.web.cli.main()
+    ↓
+Streamlit loads analytics_dashboard.py
+    ↓
+Browser opens to http://localhost:8501
+```
+
+**Database Connection:**
+```
+Development: Type conversion enabled → datetime objects
+Production:  Type conversion disabled → strings (reliable)
+Both:        sqlite3.Row factory → dict-like access
+```
+
+### Files Modified
+
+**Core Implementation:**
+- `launcher.py` - NEW: Programmatic Streamlit launcher
+- `StockAnalyzer.spec` - NEW: PyInstaller configuration
+- `src/data/database.py` - MODIFIED: Frozen mode detection for type conversion
+
+**Documentation:**
+- `docs/PYINSTALLER_IMPLEMENTATION_PLAN.md` - Followed this plan
+- `docs/LESSONS_LEARNED_PYINSTALLER.md` - Referenced for approach
+
+### Commits Summary
+1. `251c7e4` - Initial PyInstaller bundling with launcher
+2. `79f765e` - Add missing Streamlit runtime imports
+3. `3e8be85` - Add config, utilities, auto-browser launch
+4. `cd97e93` - Add peewee imports (initial attempt)
+5. `0c91418` - ROOT CAUSE FIX: Disable sqlite3 type conversion in frozen apps
+
+### Next Steps (Phase 2)
+
+**API Key Security - NOT YET IMPLEMENTED:**
+- Recover API key manager from backup branch
+- Integrate macOS Keychain for secure storage
+- Add first-launch wizard for user API keys
+- Remove .env dependency from distribution
+
+**Current Limitation:**
+⚠️ App requires .env file with API keys in same directory as .app
+⚠️ Not secure for public distribution yet
+
+**Phase 2 Estimate:** 2-3 hours
+
+---
+
 ## November 20, 2025 - Late Session: Production Planning & Documentation
 
 ### CLAUDE.md Reorganization
