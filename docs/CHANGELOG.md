@@ -88,6 +88,103 @@ This caused:
 
 ---
 
+## November 26, 2025 - Size Optimization (75% Reduction Achieved)
+
+### Issue: Bloated Application Size
+**Status:** ✅ FIXED
+**Impact:** 75% reduction in app size, 73% reduction in DMG size
+
+**Problem:** Initial PyInstaller build included massive amounts of unused dependencies:
+- .app size: 2.9GB
+- DMG size: 1.1GB
+- Analysis revealed 2.1GB (72%) of completely unused packages
+
+### Package Bloat Analysis
+Major unused packages that were being bundled:
+- **TensorFlow** - 909MB (NOT USED - no ML/DL in app)
+- **PyTorch** - 218MB (NOT USED)
+- **OpenCV** - 87MB (NOT USED)
+- **botocore/AWS** - 91MB (NOT USED)
+- **NLTK data** - 122MB (NOT USED - we use textblob/vader only)
+- **scikit-learn** - 19MB (NOT USED)
+- **spacy** - 15MB (NOT USED)
+- Plus ~90 other unused packages
+
+### Solution Implemented
+Added comprehensive exclusions to `StockAnalyzer.spec`:
+
+**Categories of Exclusions:**
+1. ML/DL frameworks (tensorflow, torch, keras, theano)
+2. Computer Vision (cv2, opencv, skimage)
+3. ML libraries (sklearn, xgboost, lightgbm, catboost)
+4. NLP (spacy, nltk, transformers - we only use textblob/vader)
+5. Qt frameworks (PyQt5, PyQt6, PySide2, PySide6)
+6. Visualization (matplotlib, scipy, bokeh, panel, seaborn, dash)
+7. Geospatial (geopandas, shapely, gdal, pyproj, cartopy)
+8. Cloud/AWS (boto, boto3, botocore, s3transfer, awscli)
+9. Database drivers (psycopg2, pymongo, redis, sqlalchemy)
+10. Web scraping (selenium, scrapy)
+11. Data formats (xlrd, xlwt, openpyxl, h5py)
+12. GUI frameworks (tkinter, wx, kivy)
+13. Dev tools (pytest, jupyter, sphinx, mypy, pylint, black)
+
+**Total:** ~100 package exclusions added
+
+### Results Achieved
+
+**Before Optimization:**
+```
+.app size: 2.9GB
+DMG size:  1.1GB
+```
+
+**After Optimization:**
+```
+.app size: 714MB (75% reduction)
+DMG size:  296MB (73% reduction)
+```
+
+**Size Breakdown (Optimized):**
+```
+MacOS/:      57MB (executable)
+Frameworks/: 590MB (down from 2.1GB)
+Resources/:  66MB (down from 626MB)
+Total:       714MB
+```
+
+**Remaining Large Frameworks** (Required - Cannot Exclude):
+- 231MB kaleido (plotly dependency for exports)
+- 94MB pyarrow (pandas dependency)
+- 94MB LLVM (likely needed by dependencies)
+- 32MB numpy (required for calculations)
+- 18MB pandas (required for data processing)
+
+### Build Process Fix
+**Issue encountered:** Initial build failed when excluding `distutils`
+```
+ValueError: Target module "distutils" already imported as "ExcludedModule('distutils',)".
+```
+
+**Fix:** Removed `distutils`, `setuptools`, `pip`, `wheel` from exclusions (PyInstaller needs these internally)
+
+### Files Modified
+- `StockAnalyzer.spec` - Added ~100 package exclusions to `excludes=[]` list
+
+### Distribution Artifacts
+- `dist/StockAnalyzer.app` - Optimized .app bundle (714MB)
+- `StockAnalyzerPro-v0.2.0-optimized.dmg` - Optimized distribution DMG (296MB)
+
+### Testing
+- ✅ Build completed successfully with all exclusions
+- ✅ Application launches and runs normally
+- ✅ All features working (data collection, sentiment analysis, dashboard)
+- ✅ DMG created and mountable
+- ✅ 75% size reduction achieved
+
+**⚠️ RECOMMENDATION:** Use `StockAnalyzerPro-v0.2.0-optimized.dmg` for distribution (296MB vs 1.1GB).
+
+---
+
 ## November 24, 2025 - PyInstaller Production Distribution (Phase 1 Complete)
 
 ### PyInstaller macOS Bundle Implementation

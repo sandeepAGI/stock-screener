@@ -95,23 +95,117 @@ a = Analysis(
         # Exclude test files
         'pytest',
         'tests',
+        'unittest',
 
         # Exclude dev tools
         'IPython',
         'notebook',
         'jupyter',
+        'sphinx',
+        'docutils',
 
-        # Exclude unused modules
+        # Exclude ML/DL frameworks (NOT USED)
+        'tensorflow',
+        'torch',
+        'torchvision',
+        'torchtext',
+        'torchaudio',
+        'keras',
+        'theano',
+
+        # Exclude CV/Image processing (NOT USED)
+        'cv2',
+        'opencv',
+        'PIL.ImageQt',
+        'skimage',
+
+        # Exclude ML libraries (NOT USED)
+        'sklearn',
+        'scikit-learn',
+        'scikit-image',
+        'xgboost',
+        'lightgbm',
+        'catboost',
+
+        # Exclude NLP (NOT USED - we only use textblob/vader)
+        'spacy',
+        'nltk',
+        'transformers',
+        'tokenizers',
+        'gensim',
+
+        # Exclude ONNX (NOT USED)
+        'onnx',
+        'onnxruntime',
+
+        # Exclude Qt (NOT USED)
+        'PyQt5',
+        'PyQt6',
+        'PySide2',
+        'PySide6',
+        'qtpy',
+
+        # Exclude visualization tools (NOT USED - we use plotly)
         'matplotlib',
         'scipy',
+        'bokeh',
+        'panel',
+        'holoviews',
+        'seaborn',
+        'dash',
 
-        # Exclude geospatial (not needed)
+        # Exclude geospatial (NOT USED)
         'pyogrio',
         'geopandas',
         'fiona',
         'shapely',
         'gdal',
         'osgeo',
+        'pyproj',
+        'cartopy',
+
+        # Exclude AWS/Cloud (NOT USED)
+        'boto',
+        'boto3',
+        'botocore',
+        's3transfer',
+        'awscli',
+
+        # Exclude database drivers (NOT USED - we only use sqlite3)
+        'psycopg2',
+        'pymongo',
+        'redis',
+        'sqlalchemy',
+
+        # Exclude web scraping (NOT USED - we use yfinance/praw APIs)
+        'selenium',
+        'scrapy',
+        'beautifulsoup4',
+        'lxml.html',
+
+        # Exclude unnecessary data formats
+        'xlrd',
+        'xlwt',
+        'openpyxl',
+        'h5py',
+        'tables',
+
+        # Exclude astropy (NOT USED)
+        'astropy',
+        'astropy_iers_data',
+
+        # Exclude GUI frameworks (NOT USED)
+        'tkinter',
+        'wx',
+        'kivy',
+
+        # Note: Can't exclude distutils, setuptools (PyInstaller needs them)
+
+        # Exclude typing extensions we don't need
+        'mypy',
+        'pylint',
+        'black',
+        'flake8',
     ],
     noarchive=False,
     optimize=0,
