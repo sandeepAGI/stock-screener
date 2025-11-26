@@ -85,7 +85,30 @@ StockAnalyzer Pro uses a weighted 4-component approach:
 - ✅ **Efficiency Fix**: Temp queue now filters already-scored items
 - ✅ **CLI Enhancement**: Added `--process-sentiment`, `--finalize-batch`, and `--poll` flags
 
+### 📦 Distribution (NEW - November 26, 2025)
+
+**macOS Standalone Application:** ✅ **READY FOR UAT**
+- ✅ **PyInstaller Build**: Native macOS .app bundle (714MB)
+- ✅ **DMG Package**: Distribution-ready disk image (296MB)
+- ✅ **Database Isolation**: Separate dev/prod databases via Application Support
+- ✅ **Size Optimization**: 75% reduction (2.9GB → 714MB) through package exclusions
+- ✅ **Auto-launch**: Browser opens automatically on app start
+- ✅ **No Dependencies**: Standalone executable, no Python installation required
+
+**Distribution File:**
+- `StockAnalyzerPro-v0.2.0-optimized.dmg` (296MB)
+- Includes: Complete app bundle, launcher, all dependencies
+
+**UAT Testing:**
+- See `UAT_TEST_PLAN.md` for comprehensive testing procedures
+- Focus: Database safety, functionality, performance, stability
+
 ### 🚧 Next Phase Priorities
+
+**Post-UAT:**
+- Address any UAT findings
+- API key migration for public distribution
+- Windows/Linux builds (if needed)
 
 **Dashboard Consolidation:**
 - Merge remaining features into single dashboard

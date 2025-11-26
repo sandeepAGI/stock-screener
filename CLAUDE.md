@@ -1,5 +1,5 @@
 # StockAnalyzer Pro - Development Guide for Claude
-**Last Updated:** November 20, 2025
+**Last Updated:** November 26, 2025
 **Purpose:** Quick reference for AI assistant working on this codebase
 
 ---
@@ -103,10 +103,12 @@ If this file grows beyond 400 lines, it's time to audit and move historical cont
 - ✅ Composite scoring (40/25/20/15 weighting)
 - ✅ Dashboard UI (`analytics_dashboard.py`)
 - ✅ CLI tools (`smart_refresh.py`, `batch_monitor.py`)
+- ✅ PyInstaller macOS build system (714MB .app, 296MB DMG)
+- ✅ Database isolation (dev/prod separation via Application Support)
 
 ### **Current Issues**
 - Dashboard fragmentation: `streamlit_app.py` vs `analytics_dashboard.py`
-- Need API key migration for production distribution
+- API key migration needed for public distribution (currently bundled)
 
 ---
 
@@ -147,6 +149,8 @@ stock-outlier/
 │   │   ├── sentiment_analyzer.py
 │   │   ├── unified_bulk_processor.py
 │   │   └── database.py
+│   ├── utils/
+│   │   └── helpers.py          # Database path helper, config loader
 │   └── analysis/               # Data quality analytics
 ├── utilities/                  # CLI tools
 │   ├── smart_refresh.py        # Main data refresh tool
@@ -155,10 +159,17 @@ stock-outlier/
 │   └── backup_database.py
 ├── docs/                       # Documentation
 ├── data/
-│   └── stock_data.db          # SQLite database
+│   └── stock_data.db          # SQLite database (dev mode)
 ├── analytics_dashboard.py      # PRIMARY dashboard
-└── streamlit_app.py           # LEGACY dashboard (to be archived)
+├── streamlit_app.py           # LEGACY dashboard (to be archived)
+├── launcher.py                 # PyInstaller entry point
+├── StockAnalyzer.spec          # PyInstaller build configuration
+└── UAT_TEST_PLAN.md           # User acceptance testing guide
 ```
+
+**Database Locations:**
+- Development: `<project>/data/stock_data.db`
+- Frozen app: `~/Library/Application Support/StockAnalyzer/stock_data.db`
 
 ---
 
@@ -210,20 +221,28 @@ Before marking any major feature complete:
 
 ## 🎯 Current Priorities
 
-### **Immediate: Production Distribution Preparation**
-**Status:** Planning complete, ready to implement
-**Documentation:** See `docs/IMPLEMENTATION_ROADMAP.md`
+### **Immediate: User Acceptance Testing**
+**Status:** Ready for UAT
+**Documentation:** See `UAT_TEST_PLAN.md`
 
-**Critical First Step: API Key Migration (4-6 hours)**
-- Implement user-provided API keys (Reddit + Claude)
-- Prevent bundling YOUR API credentials in executable
-- See `docs/API_KEY_MIGRATION.md` for details
+**Completed in Phase 1:**
+- ✅ Database safety fix (Application Support isolation)
+- ✅ PyInstaller build system (macOS .app bundle)
+- ✅ Size optimization (75% reduction: 2.9GB → 714MB)
+- ✅ Comprehensive UAT plan created
+- ✅ DMG distribution package (296MB)
 
-**Then: Build Standalone Executable (8-12 hours)**
-- Create launcher scripts for each platform
-- Configure PyInstaller for bundling
-- Test on clean machines
-- See `docs/CICD_PIPELINE.md` for automation
+**UAT Focus Areas:**
+- Database isolation verification (dev database must stay untouched)
+- Application launch and browser auto-open
+- Dashboard functionality (all tabs, charts, analysis)
+- Performance and stability testing
+
+**Next Steps (Post-UAT):**
+1. Address any issues found in UAT
+2. API key migration for public distribution
+3. Windows/Linux builds (if needed)
+4. Dashboard consolidation
 
 ### **Ongoing: Dashboard Consolidation**
 **Status:** In planning
