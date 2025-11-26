@@ -3,6 +3,91 @@
 
 ---
 
+## November 26, 2025 - CRITICAL: Database Safety Fix for PyInstaller Distribution
+
+### Issue Discovered
+**Severity:** 🔴 CRITICAL - Data Loss Risk
+**Status:** ✅ FIXED
+
+**Problem:** Hardcoded relative database paths (`data/stock_data.db`) posed severe risks:
+1. **Development database overwrite risk** - Frozen app could potentially access dev database
+2. **Unpredictable database location** - Path depends on working directory at launch
+3. **Data loss on updates** - New installs would create separate databases
+4. **No data persistence** - Each launch from different location creates new database
+
+### Root Cause
+All database connections used hardcoded relative path:
+```python
+# UNSAFE - Used everywhere
+sqlite3.connect('data/stock_data.db')
+```
+
+This caused:
+- Development mode: Uses `<project>/data/stock_data.db` ✅
+- Frozen app mode: Uses `<random_cwd>/data/stock_data.db` ❌
+
+### Solution Implemented
+
+**1. Created Environment-Aware Database Path Helper**
+- File: `src/utils/helpers.py`
+- Function: `get_database_path()`
+- Logic:
+  ```python
+  if frozen:
+      ~/Library/Application Support/StockAnalyzer/stock_data.db
+  else:
+      <project_root>/data/stock_data.db
+  ```
+
+**2. Updated DatabaseManager**
+- File: `src/data/database.py`
+- Changed from config-based path to helper function
+- Ensures consistent database location in both modes
+
+**3. Replaced All Hardcoded Paths**
+- File: `analytics_dashboard.py`
+- Replaced 6 occurrences of `'data/stock_data.db'` with `DB_PATH` constant
+- All database connections now use safe path
+
+### Data Safety Guarantees
+
+✅ **Development database protected** - Frozen apps use Application Support
+✅ **Consistent location** - Same path regardless of launch method
+✅ **Data persists across updates** - Application Support survives reinstalls
+✅ **Auto-initialization** - Creates database + schema on first run
+✅ **No overwrites** - SQLite `CREATE TABLE IF NOT EXISTS` is safe
+
+### Database Locations
+
+**Development Mode:**
+```
+/Users/sandeepmangaraj/myworkspace/Utilities/stock-outlier/data/stock_data.db
+```
+
+**Frozen App (Production):**
+```
+~/Library/Application Support/StockAnalyzer/stock_data.db
+```
+
+### Files Modified
+- `src/utils/helpers.py` - Added `get_database_path()` function
+- `src/data/database.py` - Updated `__init__()` to use helper
+- `analytics_dashboard.py` - Replaced all hardcoded database paths
+
+### Testing
+- ✅ Development mode still uses existing database
+- ✅ Frozen app creates isolated database in Application Support
+- ✅ No risk of development database corruption
+- ✅ Rebuild completed successfully (145MB .app, 1.1GB DMG)
+
+### Distribution Artifacts
+- `dist/StockAnalyzer.app` - Updated .app bundle (145MB)
+- `StockAnalyzerPro-v0.2.0-dbsafe.dmg` - Safe distribution DMG (1.1GB)
+
+**⚠️ IMPORTANT:** Use `StockAnalyzerPro-v0.2.0-dbsafe.dmg` for distribution, NOT previous DMG files.
+
+---
+
 ## November 24, 2025 - PyInstaller Production Distribution (Phase 1 Complete)
 
 ### PyInstaller macOS Bundle Implementation

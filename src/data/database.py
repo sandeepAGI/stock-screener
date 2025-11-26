@@ -11,7 +11,7 @@ from pathlib import Path
 from dataclasses import dataclass
 import json
 
-from src.utils.helpers import load_config
+from src.utils.helpers import load_config, get_database_path
 
 # Configure SQLite datetime adapters to fix Python 3.12 deprecation warnings
 def adapt_datetime(dt):
@@ -134,11 +134,10 @@ class DatabaseManager:
     
     def __init__(self, config_path: Optional[str] = None):
         self.config = load_config(config_path)
-        self.db_path = self.config.get('database', {}).get('path', 'data/stock_data.db')
-        
-        # Ensure data directory exists
-        Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
-        
+
+        # Use environment-aware database path (Application Support for frozen apps)
+        self.db_path = get_database_path()
+
         self.connection = None
         
     def connect(self):

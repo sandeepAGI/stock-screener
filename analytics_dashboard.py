@@ -21,6 +21,12 @@ import time
 # Add project root to path for data collection imports
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
+# Import database path helper
+from src.utils.helpers import get_database_path
+
+# Get database path (Application Support for frozen apps, data/ for development)
+DB_PATH = str(get_database_path())
+
 # Page configuration
 st.set_page_config(
     page_title="Stock Outlier Analysis",
@@ -116,7 +122,7 @@ st.markdown("""
 def load_stock_data() -> pd.DataFrame:
     """Load all stock data with calculated metrics from database."""
     try:
-        conn = sqlite3.connect('data/stock_data.db')
+        conn = sqlite3.connect(DB_PATH)
 
         query = """
         SELECT
@@ -160,7 +166,7 @@ def load_stock_data() -> pd.DataFrame:
 def load_sentiment_data(symbol: str) -> pd.DataFrame:
     """Load sentiment details for a specific stock."""
     try:
-        conn = sqlite3.connect('data/stock_data.db')
+        conn = sqlite3.connect(DB_PATH)
 
         # Get recent news headlines (prefer articles with titles, deduplicated)
         news_query = """
@@ -207,7 +213,7 @@ def calculate_custom_composite_scores(df: pd.DataFrame, weights: List[float]) ->
 def get_database_stats() -> Dict:
     """Get basic database statistics for the summary."""
     try:
-        conn = sqlite3.connect('data/stock_data.db')
+        conn = sqlite3.connect(DB_PATH)
 
         stats = {}
 
@@ -1437,7 +1443,7 @@ def initialize_data_collection():
 def get_data_source_status():
     """Get status of data sources with counts and freshness"""
     try:
-        conn = sqlite3.connect('data/stock_data.db')
+        conn = sqlite3.connect(DB_PATH)
         sources = {}
 
         # Helper function to calculate status
@@ -1552,7 +1558,7 @@ def run_data_refresh(data_types: List[str], symbols: Optional[List[str]] = None,
 
         # Get symbols to refresh (default to all if none specified)
         if not symbols:
-            conn = sqlite3.connect('data/stock_data.db')
+            conn = sqlite3.connect(DB_PATH)
             symbol_query = "SELECT DISTINCT symbol FROM stocks ORDER BY symbol"
             symbols_df = pd.read_sql_query(symbol_query, conn)
             symbols = symbols_df['symbol'].tolist()  # Use all stocks for production
@@ -1613,7 +1619,7 @@ def show_data_management():
     # Import sync utility
     try:
         from utilities.sync_sp500 import SP500Syncer
-        sp500_syncer = SP500Syncer(db_path='data/stock_data.db')
+        sp500_syncer = SP500Syncer(db_path=DB_PATH)
     except Exception as e:
         st.error(f"❌ Could not initialize S&P 500 syncer: {e}")
         sp500_syncer = None

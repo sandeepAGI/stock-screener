@@ -4,6 +4,7 @@ Utility functions and helpers for StockAnalyzer Pro
 
 import yaml
 import os
+import sys
 from pathlib import Path
 from typing import Dict, Any, Optional
 import logging
@@ -11,6 +12,35 @@ from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
+
+def get_database_path() -> Path:
+    """
+    Get the appropriate database path based on execution environment.
+
+    For PyInstaller frozen apps:
+        ~/Library/Application Support/StockAnalyzer/stock_data.db
+
+    For development:
+        <project_root>/data/stock_data.db
+
+    Creates the directory if it doesn't exist.
+
+    Returns:
+        Path object pointing to the database file
+    """
+    if getattr(sys, 'frozen', False):
+        # Running in PyInstaller bundle - use Application Support
+        app_support = Path.home() / "Library" / "Application Support" / "StockAnalyzer"
+        app_support.mkdir(parents=True, exist_ok=True)
+        db_path = app_support / "stock_data.db"
+    else:
+        # Running in development - use project data directory
+        project_root = Path(__file__).parent.parent.parent
+        data_dir = project_root / "data"
+        data_dir.mkdir(parents=True, exist_ok=True)
+        db_path = data_dir / "stock_data.db"
+
+    return db_path
 
 def load_config(config_path: Optional[str] = None) -> Dict[str, Any]:
     """
