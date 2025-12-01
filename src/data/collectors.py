@@ -576,7 +576,8 @@ class DataCollectionOrchestrator:
                                 content = news_item.get('content', {})
                                 pub_date_str = content.get('pubDate')
                                 if pub_date_str:
-                                    publish_date = datetime.fromisoformat(pub_date_str.replace('Z', '+00:00'))
+                                    # Parse and strip timezone to ensure consistent naive datetime storage
+                                    publish_date = datetime.fromisoformat(pub_date_str.replace('Z', '+00:00')).replace(tzinfo=None)
                                 else:
                                     publish_date = datetime.now()
                             else:
@@ -954,8 +955,8 @@ class DataCollectionOrchestrator:
                                 publish_date = None
                                 if news_item.get('publish_time'):
                                     try:
-                                        # Parse ISO format: '2025-07-27T09:45:00Z'
-                                        publish_date = datetime.fromisoformat(news_item['publish_time'].replace('Z', '+00:00'))
+                                        # Parse ISO format: '2025-07-27T09:45:00Z' and strip timezone for consistent storage
+                                        publish_date = datetime.fromisoformat(news_item['publish_time'].replace('Z', '+00:00')).replace(tzinfo=None)
                                     except:
                                         # Try alternative formats
                                         try:

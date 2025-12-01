@@ -143,10 +143,23 @@ NEWS_API_KEY=your_claude_api_key_here
 **Note:** System automatically falls back to traditional sentiment analysis if Claude API unavailable.
 
 ### Launch Dashboard
+
+**IMPORTANT:** Always use the launcher script or activate the virtual environment first to avoid dependency conflicts.
+
+**Option 1: Use the launcher script (Recommended)**
 ```bash
-# Main dashboard with 3-step workflow
+cd ~/myworkspace/Utilities/stock-outlier
+./run_dashboard.sh
+```
+
+**Option 2: Manual launch with venv**
+```bash
+cd ~/myworkspace/Utilities/stock-outlier
+source venv/bin/activate
 streamlit run analytics_dashboard.py
 ```
+
+⚠️ **Do NOT run `streamlit run analytics_dashboard.py` directly from your base conda/anaconda environment** - this will cause dependency conflicts and errors.
 
 This provides:
 - **Complete 3-Step Workflow**: Collect → Process → Calculate

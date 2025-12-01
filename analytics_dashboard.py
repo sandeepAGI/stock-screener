@@ -2561,10 +2561,11 @@ def main():
     # Check if reset was requested
     if st.session_state.reset_weights:
         st.session_state.reset_weights = False
-        # Clear any existing slider values from session state
-        for key in list(st.session_state.keys()):
-            if key.startswith('slider_'):
-                del st.session_state[key]
+        # Reset slider values to defaults (don't delete keys - causes session state corruption)
+        st.session_state.slider_fund = default_fund
+        st.session_state.slider_qual = default_qual
+        st.session_state.slider_growth = default_growth
+        st.session_state.slider_sent = default_sent
 
     # Sidebar for weight adjustment (below navigation)
     with st.sidebar:

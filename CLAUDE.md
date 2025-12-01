@@ -287,12 +287,19 @@ python utilities/batch_monitor.py
 ```
 
 ### **Dashboard**
+
+⚠️ **IMPORTANT:** Always use the launcher script or venv to avoid dependency conflicts with anaconda.
+
 ```bash
-# Primary dashboard (analytics_dashboard.py)
+# RECOMMENDED: Use launcher script (handles venv automatically)
+./run_dashboard.sh
+
+# OR: Manual launch with venv activation
+source venv/bin/activate
 streamlit run analytics_dashboard.py
 
 # Legacy dashboard (streamlit_app.py) - to be archived
-streamlit run streamlit_app.py
+# source venv/bin/activate && streamlit run streamlit_app.py
 ```
 
 ### **Database Operations**
