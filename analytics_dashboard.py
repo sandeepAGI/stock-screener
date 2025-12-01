@@ -1943,7 +1943,7 @@ def show_data_management():
 
         if step2_complete:
             st.success("### ✅ STEP 2: COMPLETE")
-            st.success("🎉 **All sentiment processing finished!** All {total_processed:,} items have been analyzed.")
+            st.success(f"🎉 **All sentiment processing finished!** All {total_processed:,} items have been analyzed.")
             st.info("➡️ **Ready for Step 3:** Proceed to calculate final rankings below")
 
             # Show summary stats
