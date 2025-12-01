@@ -37,6 +37,9 @@ a = Analysis(
         # Logo if exists
         ('src/data/Logo-Element-Retina.png', 'src/data'),
 
+        # Template database for first-run initialization
+        ('data/stock_data_template.db', 'data'),
+
         # Streamlit dependencies
         *streamlit_datas,
         *streamlit_metadata,
@@ -87,6 +90,8 @@ a = Analysis(
         'watchdog',
         'tornado',
         'pyarrow',
+        'lxml',
+        'lxml.etree',
     ],
     hookspath=[],
     hooksconfig={},
@@ -181,7 +186,7 @@ a = Analysis(
         'selenium',
         'scrapy',
         'beautifulsoup4',
-        'lxml.html',
+        # Note: lxml is needed for S&P 500 sync (pd.read_html)
 
         # Exclude unnecessary data formats
         'xlrd',
@@ -257,8 +262,8 @@ app = BUNDLE(
         'NSHighResolutionCapable': 'True',
         'CFBundleName': 'StockAnalyzer Pro',
         'CFBundleDisplayName': 'StockAnalyzer Pro',
-        'CFBundleVersion': '0.2.0',
-        'CFBundleShortVersionString': '0.2.0',
+        'CFBundleVersion': '0.2.1',
+        'CFBundleShortVersionString': '0.2.1',
         'NSHumanReadableCopyright': 'Copyright © 2025',
     },
 )
