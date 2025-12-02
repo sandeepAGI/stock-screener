@@ -160,15 +160,20 @@ def calculate_analytics_batch(symbols: List[str], calculators: Dict,
     try:
         # Use batch calculation for efficiency
         batch_results = composite_calc.calculate_batch_composite(symbols, db)
-        
-        # Save results
+
+        # Calculate percentiles and outlier categories
         if batch_results:
+            logger.info(f"📊 Calculating percentiles for {len(batch_results)} stocks...")
+            batch_results = composite_calc.calculate_percentiles(batch_results)
+
+            # Save results with percentiles
             composite_calc.save_composite_scores(batch_results, db)
-            
+
             for symbol in symbols:
                 if symbol in batch_results:
                     results[symbol] = True
-                    logger.info(f"✅ {symbol}: Analytics updated successfully")
+                    score = batch_results[symbol]
+                    logger.info(f"✅ {symbol}: Analytics updated (score={score.composite_score:.1f}, sector_pct={score.sector_percentile:.1f}%)")
                 else:
                     results[symbol] = False
                     logger.warning(f"⚠️  {symbol}: Analytics calculation failed")
