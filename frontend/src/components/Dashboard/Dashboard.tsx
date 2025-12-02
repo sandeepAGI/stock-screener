@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { TrendingDown, TrendingUp, Activity, BarChart3, Factory } from 'lucide-react';
+import { TrendingDown, TrendingUp, Activity, BarChart3, Factory, ArrowUp, ArrowDown } from 'lucide-react';
 import {
   BarChart,
   Bar,
@@ -149,8 +149,36 @@ export function Dashboard() {
     }));
 
     // Sort by custom score (descending - highest score first)
-    return [...withCustom].sort((a, b) => b.customScore - a.customScore);
+    const sorted = [...withCustom].sort((a, b) => b.customScore - a.customScore);
+
+    // Add new rank position
+    return sorted.map((stock, newIndex) => ({
+      ...stock,
+      newRank: newIndex + 1,
+      rankChange: stock.originalRank - (newIndex + 1), // Positive = moved up, negative = moved down
+    }));
   }, [rankings, isDefault, calculateCustomScore]);
+
+  // Biggest movers when weights change (stocks that moved ±5 or more positions)
+  const biggestMovers = useMemo(() => {
+    if (isDefault) return { gainers: [], losers: [] };
+
+    const significantMovers = rankedStocks.filter(s => Math.abs(s.rankChange) >= 5);
+
+    // Gainers: moved up (positive rank change), sorted by biggest gains
+    const gainers = significantMovers
+      .filter(s => s.rankChange > 0)
+      .sort((a, b) => b.rankChange - a.rankChange)
+      .slice(0, 5);
+
+    // Losers: moved down (negative rank change), sorted by biggest losses
+    const losers = significantMovers
+      .filter(s => s.rankChange < 0)
+      .sort((a, b) => a.rankChange - b.rankChange)
+      .slice(0, 5);
+
+    return { gainers, losers };
+  }, [rankedStocks, isDefault]);
 
   // Top 5 Undervalued = Top 5 highest scores (best stocks)
   const top5Undervalued = useMemo(() => {
@@ -303,14 +331,6 @@ export function Dashboard() {
           <CardHeader
             title="Most Undervalued (Top 5)"
             subtitle={isDefault ? 'Highest scoring stocks' : 'Based on custom weights'}
-            action={
-              <Link
-                to="/rankings"
-                className="text-sm text-green-600 hover:text-green-800"
-              >
-                View all
-              </Link>
-            }
           />
           <div>
             {top5Undervalued.length > 0 ? (
@@ -334,14 +354,6 @@ export function Dashboard() {
           <CardHeader
             title="Most Overvalued (Bottom 5)"
             subtitle={isDefault ? 'Lowest scoring stocks' : 'Based on custom weights'}
-            action={
-              <Link
-                to="/rankings?ascending=true"
-                className="text-sm text-red-600 hover:text-red-800"
-              >
-                View all
-              </Link>
-            }
           />
           <div>
             {top5Overvalued.length > 0 ? (
@@ -360,6 +372,93 @@ export function Dashboard() {
           </div>
         </Card>
       </div>
+
+      {/* Biggest Ranking Changes - shown only when weights are changed */}
+      {!isDefault && (
+        <Card>
+          <CardHeader
+            title="Biggest Ranking Changes"
+            subtitle="Stocks with significant rank movement (±5 positions)"
+          />
+          {biggestMovers.gainers.length === 0 && biggestMovers.losers.length === 0 ? (
+            <p className="text-sm text-gray-500 text-center py-4">
+              No significant ranking changes (±5 positions) with current weight adjustment
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Biggest Gainers */}
+              <div>
+                <h4 className="text-sm font-semibold text-green-600 mb-3 flex items-center gap-2">
+                  <ArrowUp className="w-4 h-4" />
+                  Biggest Gainers
+                </h4>
+                {biggestMovers.gainers.length > 0 ? (
+                  <div className="space-y-2">
+                    {biggestMovers.gainers.map((stock) => (
+                      <Link
+                        key={stock.symbol}
+                        to={`/analysis?symbol=${stock.symbol}`}
+                        className="block p-3 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 transition-colors"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <span className="font-bold text-gray-900">{stock.symbol}</span>
+                            <p className="text-xs text-gray-500 truncate">{stock.company_name}</p>
+                          </div>
+                          <div className="flex items-center gap-1 text-green-600 font-semibold">
+                            <ArrowUp className="w-4 h-4" />
+                            <span>+{stock.rankChange}</span>
+                          </div>
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          Rank: {stock.originalRank} → {stock.newRank}
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-500">No significant gainers</p>
+                )}
+              </div>
+
+              {/* Biggest Losers */}
+              <div>
+                <h4 className="text-sm font-semibold text-red-600 mb-3 flex items-center gap-2">
+                  <ArrowDown className="w-4 h-4" />
+                  Biggest Losers
+                </h4>
+                {biggestMovers.losers.length > 0 ? (
+                  <div className="space-y-2">
+                    {biggestMovers.losers.map((stock) => (
+                      <Link
+                        key={stock.symbol}
+                        to={`/analysis?symbol=${stock.symbol}`}
+                        className="block p-3 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <span className="font-bold text-gray-900">{stock.symbol}</span>
+                            <p className="text-xs text-gray-500 truncate">{stock.company_name}</p>
+                          </div>
+                          <div className="flex items-center gap-1 text-red-600 font-semibold">
+                            <ArrowDown className="w-4 h-4" />
+                            <span>{stock.rankChange}</span>
+                          </div>
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1">
+                          Rank: {stock.originalRank} → {stock.newRank}
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-500">No significant losers</p>
+                )}
+              </div>
+            </div>
+          )}
+        </Card>
+      )}
 
       {/* Distribution Analysis - matching Streamlit */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

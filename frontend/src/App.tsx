@@ -1,8 +1,7 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { WeightsProvider } from './context/WeightsContext';
 import { Sidebar } from './components/common/Sidebar';
 import { Dashboard } from './components/Dashboard/Dashboard';
-import { Rankings } from './components/Rankings/Rankings';
 import { StockAnalysis } from './components/StockAnalysis/StockAnalysis';
 import { DataManagement } from './components/DataManagement/DataManagement';
 
@@ -15,7 +14,7 @@ function App() {
           <main className="flex-1 overflow-auto">
             <Routes>
               <Route path="/" element={<Dashboard />} />
-              <Route path="/rankings" element={<Rankings />} />
+              <Route path="/rankings" element={<Navigate to="/" replace />} />
               <Route path="/analysis" element={<StockAnalysis />} />
               <Route path="/data" element={<DataManagement />} />
             </Routes>
