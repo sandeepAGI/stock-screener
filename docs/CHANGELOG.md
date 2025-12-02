@@ -2,6 +2,35 @@
 
 All notable changes to StockAnalyzer Pro.
 
+## December 1, 2025 - Electron Migration Phase 1
+
+### Added
+
+- FastAPI backend for Electron migration (`backend/`)
+- REST API endpoints:
+  - `GET /api/health` - Health check
+  - `GET /api/stocks` - List all stocks
+  - `GET /api/stocks/{symbol}` - Stock details with scores
+  - `GET /api/rankings` - Composite rankings
+  - `GET /api/rankings/sector/{sector}` - Sector rankings
+  - `POST /api/data/refresh` - Trigger data refresh
+  - `GET /api/data/status` - Collection status
+  - `GET /api/data/metrics/summary` - Database stats
+  - `POST /api/sentiment/submit` - Submit sentiment batch
+  - `GET /api/sentiment/status/{id}` - Batch status
+  - `POST /api/calculate` - Run calculations
+- WebSocket endpoint for real-time progress updates
+- Pydantic models for type-safe API responses
+- OpenAPI docs at `/api/docs`
+
+### Architecture
+
+- `backend/main.py` - FastAPI app entry
+- `backend/api/` - Route handlers
+- `backend/models/` - Pydantic schemas
+
+---
+
 ## December 1, 2025 - Codebase Cleanup
 
 ### Changed
