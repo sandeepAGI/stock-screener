@@ -534,7 +534,7 @@ export function Dashboard() {
                     Math.ceil((boxPlotData.max || 90) / 10) * 10
                   ]}
                   tickFormatter={(value) => value.toFixed(0)}
-                  label={{ value: 'Composite Score', angle: -90, position: 'insideLeft', offset: -10 }}
+                  label={{ value: 'Composite Score', angle: -90, position: 'center', dx: -20 }}
                 />
                 <ZAxis range={[20, 20]} />
                 <Tooltip
