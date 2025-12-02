@@ -138,56 +138,32 @@ def get_stocks_needing_update(db: DatabaseManager, symbols: Optional[List[str]] 
     cursor.close()
     return stocks_needing_update, last_calc_times
 
-def calculate_analytics_batch(symbols: List[str], calculators: Dict, 
-                            db: DatabaseManager, logger: logging.Logger) -> Dict[str, bool]:
+def calculate_composite_batch(symbols: List[str], calculators: Dict,
+                            db: DatabaseManager, logger: logging.Logger) -> Dict[str, any]:
     """
-    Calculate analytics for a batch of symbols
-    
+    Calculate composite scores for a batch of symbols (without percentiles)
+
     Args:
         symbols: List of symbols to process
         calculators: Dictionary of calculator instances
         db: Database manager
         logger: Logger instance
-        
+
     Returns:
-        Dict mapping symbol to success status
+        Dict mapping symbol to CompositeScore objects (without percentiles)
     """
-    results = {}
     composite_calc = calculators['composite']
-    
+
     logger.info(f"🔄 Processing batch: {', '.join(symbols)}")
-    
+
     try:
-        # Use batch calculation for efficiency
+        # Calculate composite scores (without percentiles)
         batch_results = composite_calc.calculate_batch_composite(symbols, db)
+        return batch_results if batch_results else {}
 
-        # Calculate percentiles and outlier categories
-        if batch_results:
-            logger.info(f"📊 Calculating percentiles for {len(batch_results)} stocks...")
-            batch_results = composite_calc.calculate_percentiles(batch_results)
-
-            # Save results with percentiles
-            composite_calc.save_composite_scores(batch_results, db)
-
-            for symbol in symbols:
-                if symbol in batch_results:
-                    results[symbol] = True
-                    score = batch_results[symbol]
-                    logger.info(f"✅ {symbol}: Analytics updated (score={score.composite_score:.1f}, sector_pct={score.sector_percentile:.1f}%)")
-                else:
-                    results[symbol] = False
-                    logger.warning(f"⚠️  {symbol}: Analytics calculation failed")
-        else:
-            for symbol in symbols:
-                results[symbol] = False
-                logger.error(f"❌ {symbol}: Batch calculation failed")
-    
     except Exception as e:
         logger.error(f"❌ Batch calculation error: {str(e)}")
-        for symbol in symbols:
-            results[symbol] = False
-    
-    return results
+        return {}
 
 def update_analytics(symbols: Optional[List[str]] = None,
                     force_recalculate: bool = False,
@@ -238,34 +214,51 @@ def update_analytics(symbols: Optional[List[str]] = None,
         logger.info(f"🎯 Found {len(stocks_to_update)} stocks needing analytics updates")
         logger.info(f"📊 Stocks to process: {', '.join(stocks_to_update)}")
         
-        # Process in batches
-        total_processed = 0
-        total_success = 0
+        # Phase 1: Calculate composite scores for all stocks (without percentiles)
+        all_composite_scores = {}
+        total_batches = (len(stocks_to_update) + batch_size - 1) // batch_size
         start_time = datetime.now()
-        
+
+        logger.info(f"📊 Phase 1: Calculating composite scores for {len(stocks_to_update)} stocks...")
+
         for i in range(0, len(stocks_to_update), batch_size):
             batch = stocks_to_update[i:i + batch_size]
             batch_num = (i // batch_size) + 1
-            total_batches = (len(stocks_to_update) + batch_size - 1) // batch_size
-            
+
             logger.info(f"🔄 Processing batch {batch_num}/{total_batches}")
-            
-            # Calculate analytics for this batch
-            batch_results = calculate_analytics_batch(batch, calculators, db, logger)
-            
-            # Update counters
-            for symbol, success in batch_results.items():
-                total_processed += 1
-                if success:
-                    total_success += 1
-            
+
+            # Calculate composite scores for this batch
+            batch_results = calculate_composite_batch(batch, calculators, db, logger)
+
+            # Merge results
+            all_composite_scores.update(batch_results)
+
             # Progress update
             elapsed = (datetime.now() - start_time).total_seconds()
-            remaining_stocks = len(stocks_to_update) - total_processed
-            if total_processed > 0:
-                eta_seconds = (elapsed / total_processed) * remaining_stocks
-                logger.info(f"📈 Progress: {total_processed}/{len(stocks_to_update)} "
-                           f"({total_success} successful) | ETA: {eta_seconds/60:.1f}m")
+            processed = len(all_composite_scores)
+            if processed > 0:
+                remaining = len(stocks_to_update) - (i + len(batch))
+                eta_seconds = (elapsed / processed) * remaining if remaining > 0 else 0
+                logger.info(f"📈 Progress: {processed}/{len(stocks_to_update)} scores calculated | ETA: {eta_seconds/60:.1f}m")
+
+        # Phase 2: Calculate percentiles across ALL stocks at once
+        total_success = len(all_composite_scores)
+        total_processed = len(stocks_to_update)
+
+        if all_composite_scores:
+            logger.info(f"📊 Phase 2: Calculating percentiles across {len(all_composite_scores)} stocks...")
+            composite_calc = calculators['composite']
+
+            # Calculate percentiles across ALL stocks
+            all_composite_scores = composite_calc.calculate_percentiles(all_composite_scores)
+
+            # Save all results with proper percentiles
+            logger.info(f"💾 Phase 3: Saving {len(all_composite_scores)} results to database...")
+            composite_calc.save_composite_scores(all_composite_scores, db)
+
+            # Log summary of categorization
+            for symbol, score in all_composite_scores.items():
+                logger.info(f"✅ {symbol}: score={score.composite_score:.1f}, sector_pct={score.sector_percentile:.1f}%, category={score.outlier_category}")
         
         # Final summary
         elapsed_time = (datetime.now() - start_time).total_seconds()

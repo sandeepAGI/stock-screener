@@ -80,13 +80,13 @@ class CompositeCalculator:
             'sentiment': 0.15      # 15% - Market perception metrics
         }
         
-        # Outlier detection thresholds
+        # Outlier detection thresholds (high score = undervalued/good value)
         self.outlier_thresholds = {
-            'strong_undervalued': 20,    # Bottom 20th percentile
-            'undervalued': 35,           # Bottom 35th percentile  
+            'strong_overvalued': 20,     # Bottom 20th percentile (low score = overvalued)
+            'overvalued': 35,            # 20th-35th percentile
             'fairly_valued': 65,         # 35th-65th percentile
-            'overvalued': 80,            # 65th-80th percentile
-            'strong_overvalued': 100     # Top 80th+ percentile
+            'undervalued': 80,           # 65th-80th percentile
+            'strong_undervalued': 100    # Top 80th+ percentile (high score = undervalued)
         }
         
         # Minimum data quality requirements (restored to original proper values)
@@ -347,17 +347,19 @@ class CompositeCalculator:
                 original_score = composite_scores[symbol]
                 
                 # Determine outlier category based on market percentile
+                # High percentile (high score) = undervalued (good value)
+                # Low percentile (low score) = overvalued (expensive)
                 market_pct = row['market_percentile']
-                if market_pct <= self.outlier_thresholds['strong_undervalued']:
-                    outlier_category = 'strong_undervalued'
-                elif market_pct <= self.outlier_thresholds['undervalued']:
-                    outlier_category = 'undervalued'
-                elif market_pct <= self.outlier_thresholds['fairly_valued']:
-                    outlier_category = 'fairly_valued'
+                if market_pct <= self.outlier_thresholds['strong_overvalued']:
+                    outlier_category = 'strong_overvalued'
                 elif market_pct <= self.outlier_thresholds['overvalued']:
                     outlier_category = 'overvalued'
+                elif market_pct <= self.outlier_thresholds['fairly_valued']:
+                    outlier_category = 'fairly_valued'
+                elif market_pct <= self.outlier_thresholds['undervalued']:
+                    outlier_category = 'undervalued'
                 else:
-                    outlier_category = 'strong_overvalued'
+                    outlier_category = 'strong_undervalued'
                 
                 # Create updated CompositeScore
                 updated_scores[symbol] = CompositeScore(
