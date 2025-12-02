@@ -1931,6 +1931,7 @@ def show_data_management():
             return None
 
     bulk_processor = get_bulk_processor()
+    active_batches = []  # Initialize before conditional to prevent UnboundLocalError
 
     if not bulk_processor:
         st.error("❌ Bulk sentiment processor not available")
