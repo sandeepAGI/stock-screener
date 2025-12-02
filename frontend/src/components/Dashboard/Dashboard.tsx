@@ -10,9 +10,9 @@ import {
   Tooltip,
   ResponsiveContainer,
   Cell,
-  PieChart,
-  Pie,
-  Legend,
+  ComposedChart,
+  Scatter,
+  ReferenceLine,
 } from 'recharts';
 import { api } from '../../api/client';
 import { useWeightsContext } from '../../context/WeightsContext';
@@ -81,22 +81,6 @@ function TopStockCard({
   );
 }
 
-// Category distribution colors
-const CATEGORY_COLORS: Record<string, string> = {
-  strong_undervalued: '#10b981',
-  undervalued: '#34d399',
-  fairly_valued: '#6b7280',
-  overvalued: '#f87171',
-  strong_overvalued: '#ef4444',
-};
-
-const CATEGORY_LABELS: Record<string, string> = {
-  strong_undervalued: 'Strong Undervalued',
-  undervalued: 'Undervalued',
-  fairly_valued: 'Fairly Valued',
-  overvalued: 'Overvalued',
-  strong_overvalued: 'Strong Overvalued',
-};
 
 export function Dashboard() {
   const [rankings, setRankings] = useState<RankingEntry[]>([]);
@@ -215,19 +199,39 @@ export function Dashboard() {
     return bins;
   }, [rankedStocks]);
 
-  // Category distribution data
-  const categoryDistribution = useMemo(() => {
-    const counts: Record<string, number> = {};
-    rankedStocks.forEach((r) => {
-      const cat = r.outlier_category || 'fairly_valued';
-      counts[cat] = (counts[cat] || 0) + 1;
-    });
+  // Box plot data - calculate outliers using IQR method
+  const boxPlotData = useMemo(() => {
+    if (rankedStocks.length === 0) return { outliers: [], nonOutliers: [], q1: 0, q3: 0, median: 0, lowerFence: 0, upperFence: 0 };
 
-    return Object.entries(counts).map(([category, count]) => ({
-      name: CATEGORY_LABELS[category] || category,
-      value: count,
-      color: CATEGORY_COLORS[category] || '#6b7280',
+    const scores = rankedStocks.map((r) => r.customScore).sort((a, b) => a - b);
+    const n = scores.length;
+
+    const q1 = scores[Math.floor(n * 0.25)];
+    const q3 = scores[Math.floor(n * 0.75)];
+    const median = n % 2 === 0 ? (scores[n / 2 - 1] + scores[n / 2]) / 2 : scores[Math.floor(n / 2)];
+    const iqr = q3 - q1;
+    const lowerFence = q1 - 1.5 * iqr;
+    const upperFence = q3 + 1.5 * iqr;
+
+    const outliers = rankedStocks.filter(
+      (r) => r.customScore < lowerFence || r.customScore > upperFence
+    ).map((r) => ({
+      x: 0.3 + Math.random() * 0.4, // Jitter for visibility
+      y: r.customScore,
+      symbol: r.symbol,
+      company: r.company_name,
     }));
+
+    const nonOutliers = rankedStocks.filter(
+      (r) => r.customScore >= lowerFence && r.customScore <= upperFence
+    ).map((r) => ({
+      x: 0.3 + Math.random() * 0.4, // Jitter for visibility
+      y: r.customScore,
+      symbol: r.symbol,
+      company: r.company_name,
+    }));
+
+    return { outliers, nonOutliers, q1, q3, median, lowerFence, upperFence };
   }, [rankedStocks]);
 
   // Statistical summary calculations
@@ -500,52 +504,70 @@ export function Dashboard() {
           </div>
         </Card>
 
-        {/* Category Distribution Pie Chart */}
+        {/* Score Distribution Box Plot - matching Streamlit */}
         <Card>
           <CardHeader
-            title="Category Distribution"
-            subtitle="Stocks by valuation category"
+            title="Score Distribution Box Plot"
+            subtitle="With outlier identification"
           />
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={categoryDistribution}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={90}
-                  paddingAngle={2}
-                  dataKey="value"
-                  label={({ value }) => `${value}`}
-                  labelLine={false}
-                >
-                  {categoryDistribution.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
+              <ComposedChart
+                data={[{ x: 0.5 }]}
+                margin={{ top: 20, right: 30, left: 20, bottom: 20 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} />
+                <XAxis type="number" domain={[0, 1]} hide />
+                <YAxis
+                  domain={['auto', 'auto']}
+                  label={{ value: 'Composite Score', angle: -90, position: 'insideLeft' }}
+                />
                 <Tooltip
                   content={({ active, payload }) => {
                     if (active && payload && payload.length) {
                       const data = payload[0].payload;
-                      return (
-                        <div className="bg-white p-2 border border-gray-200 rounded shadow-sm">
-                          <p className="font-medium">{data.name}</p>
-                          <p className="text-sm text-gray-600">{data.value} stocks</p>
-                        </div>
-                      );
+                      if (data.symbol) {
+                        return (
+                          <div className="bg-white p-2 border border-gray-200 rounded shadow-sm">
+                            <p className="font-bold">{data.symbol}</p>
+                            <p className="text-sm text-gray-600">Score: {data.y.toFixed(2)}</p>
+                            <p className="text-xs text-gray-500">{data.company}</p>
+                          </div>
+                        );
+                      }
                     }
                     return null;
                   }}
                 />
-                <Legend
-                  layout="horizontal"
-                  verticalAlign="bottom"
-                  align="center"
-                  wrapperStyle={{ fontSize: '12px' }}
+                {/* IQR Box (Q1 to Q3) */}
+                <ReferenceLine y={boxPlotData.q3} stroke="#636EFA" strokeWidth={2} label={{ value: `Q3: ${boxPlotData.q3.toFixed(1)}`, position: 'right', fontSize: 10 }} />
+                <ReferenceLine y={boxPlotData.median} stroke="#636EFA" strokeWidth={3} strokeDasharray="5 5" label={{ value: `Median: ${boxPlotData.median.toFixed(1)}`, position: 'right', fontSize: 10 }} />
+                <ReferenceLine y={boxPlotData.q1} stroke="#636EFA" strokeWidth={2} label={{ value: `Q1: ${boxPlotData.q1.toFixed(1)}`, position: 'right', fontSize: 10 }} />
+                {/* Non-outlier points */}
+                <Scatter
+                  data={boxPlotData.nonOutliers}
+                  fill="rgba(99, 110, 250, 0.3)"
+                  name="Normal Range"
                 />
-              </PieChart>
+                {/* Outlier points */}
+                <Scatter
+                  data={boxPlotData.outliers}
+                  fill="#FF6B6B"
+                  shape="diamond"
+                  name="Outliers"
+                />
+              </ComposedChart>
             </ResponsiveContainer>
+          </div>
+          <div className="flex justify-center gap-6 text-xs text-gray-500 mt-2">
+            <div className="flex items-center gap-1">
+              <div className="w-3 h-3 rounded-full bg-blue-400 opacity-50"></div>
+              <span>Normal Range ({boxPlotData.nonOutliers.length})</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="w-3 h-3 bg-red-400" style={{ transform: 'rotate(45deg)' }}></div>
+              <span>Outliers ({boxPlotData.outliers.length})</span>
+            </div>
           </div>
         </Card>
       </div>
