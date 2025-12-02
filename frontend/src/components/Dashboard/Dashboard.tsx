@@ -10,8 +10,9 @@ import {
   Tooltip,
   ResponsiveContainer,
   Cell,
-  ComposedChart,
+  ScatterChart,
   Scatter,
+  ZAxis,
   ReferenceLine,
 } from 'recharts';
 import { api } from '../../api/client';
@@ -512,16 +513,16 @@ export function Dashboard() {
           />
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart
-                data={[{ x: 0.5 }]}
-                margin={{ top: 20, right: 30, left: 20, bottom: 20 }}
-              >
+              <ScatterChart margin={{ top: 20, right: 80, left: 20, bottom: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} />
-                <XAxis type="number" domain={[0, 1]} hide />
+                <XAxis type="number" dataKey="x" domain={[0, 1]} hide />
                 <YAxis
+                  type="number"
+                  dataKey="y"
                   domain={['auto', 'auto']}
                   label={{ value: 'Composite Score', angle: -90, position: 'insideLeft' }}
                 />
+                <ZAxis range={[30, 30]} />
                 <Tooltip
                   content={({ active, payload }) => {
                     if (active && payload && payload.length) {
@@ -539,24 +540,26 @@ export function Dashboard() {
                     return null;
                   }}
                 />
-                {/* IQR Box (Q1 to Q3) */}
+                {/* IQR reference lines */}
                 <ReferenceLine y={boxPlotData.q3} stroke="#636EFA" strokeWidth={2} label={{ value: `Q3: ${boxPlotData.q3.toFixed(1)}`, position: 'right', fontSize: 10 }} />
                 <ReferenceLine y={boxPlotData.median} stroke="#636EFA" strokeWidth={3} strokeDasharray="5 5" label={{ value: `Median: ${boxPlotData.median.toFixed(1)}`, position: 'right', fontSize: 10 }} />
                 <ReferenceLine y={boxPlotData.q1} stroke="#636EFA" strokeWidth={2} label={{ value: `Q1: ${boxPlotData.q1.toFixed(1)}`, position: 'right', fontSize: 10 }} />
                 {/* Non-outlier points */}
                 <Scatter
-                  data={boxPlotData.nonOutliers}
-                  fill="rgba(99, 110, 250, 0.3)"
                   name="Normal Range"
+                  data={boxPlotData.nonOutliers}
+                  fill="rgba(99, 110, 250, 0.4)"
+                  stroke="rgba(99, 110, 250, 0.6)"
                 />
                 {/* Outlier points */}
                 <Scatter
+                  name="Outliers"
                   data={boxPlotData.outliers}
                   fill="#FF6B6B"
+                  stroke="#C92A2A"
                   shape="diamond"
-                  name="Outliers"
                 />
-              </ComposedChart>
+              </ScatterChart>
             </ResponsiveContainer>
           </div>
           <div className="flex justify-center gap-6 text-xs text-gray-500 mt-2">
