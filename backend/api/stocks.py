@@ -447,7 +447,7 @@ async def get_stock_extended(symbol: str):
                     composite_score=row[3]
                 ))
 
-        # Get industry peers (same industry)
+        # Get industry peers (same industry) - using created_at subquery for latest record only
         cursor.execute("""
             SELECT s.symbol, s.company_name, s.sector, s.industry,
                    c.composite_score, c.fundamental_score, c.quality_score,
@@ -455,6 +455,9 @@ async def get_stock_extended(symbol: str):
             FROM stocks s
             JOIN calculated_metrics c ON s.symbol = c.symbol
             WHERE s.industry = ? AND s.symbol != ? AND s.is_active = 1
+            AND c.created_at = (
+                SELECT MAX(created_at) FROM calculated_metrics c2 WHERE c2.symbol = s.symbol
+            )
             ORDER BY c.composite_score DESC
             LIMIT 5
         """, (stock_info.get("industry"), symbol.upper()))
@@ -473,7 +476,7 @@ async def get_stock_extended(symbol: str):
                 sentiment_score=row[8]
             ))
 
-        # Get sector peers (same sector, top performers)
+        # Get sector peers (same sector, top performers) - using created_at subquery for latest record only
         cursor.execute("""
             SELECT s.symbol, s.company_name, s.sector, s.industry,
                    c.composite_score, c.fundamental_score, c.quality_score,
@@ -481,6 +484,9 @@ async def get_stock_extended(symbol: str):
             FROM stocks s
             JOIN calculated_metrics c ON s.symbol = c.symbol
             WHERE s.sector = ? AND s.symbol != ? AND s.is_active = 1
+            AND c.created_at = (
+                SELECT MAX(created_at) FROM calculated_metrics c2 WHERE c2.symbol = s.symbol
+            )
             ORDER BY c.composite_score DESC
             LIMIT 10
         """, (stock_info.get("sector"), symbol.upper()))
