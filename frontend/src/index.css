@@ -1,0 +1,85 @@
+@import "tailwindcss";
+
+/* Custom theme variables */
+:root {
+  --primary: #1e3a5f;
+  --primary-dark: #0d1b2a;
+  --accent: #4dabf7;
+  --success: #2ecc71;
+  --warning: #f39c12;
+  --danger: #e74c3c;
+}
+
+/* Base styles */
+body {
+  @apply bg-gray-50 text-gray-900 antialiased;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  margin: 0;
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-gray-100;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-gray-300 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-gray-400;
+}
+
+/* Card styles */
+.card {
+  @apply bg-white rounded-lg shadow-sm border border-gray-200;
+}
+
+/* Score badge colors */
+.score-badge {
+  @apply px-2 py-0.5 rounded text-xs font-medium;
+}
+
+.score-high {
+  @apply bg-green-100 text-green-800;
+}
+
+.score-medium {
+  @apply bg-yellow-100 text-yellow-800;
+}
+
+.score-low {
+  @apply bg-red-100 text-red-800;
+}
+
+/* Outlier category colors */
+.outlier-strong-undervalued {
+  @apply bg-emerald-100 text-emerald-800;
+}
+
+.outlier-undervalued {
+  @apply bg-green-100 text-green-800;
+}
+
+.outlier-fairly-valued {
+  @apply bg-gray-100 text-gray-800;
+}
+
+.outlier-overvalued {
+  @apply bg-orange-100 text-orange-800;
+}
+
+.outlier-strong-overvalued {
+  @apply bg-red-100 text-red-800;
+}
