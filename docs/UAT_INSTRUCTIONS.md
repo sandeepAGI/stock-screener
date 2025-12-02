@@ -1,8 +1,9 @@
 # User Acceptance Testing (UAT) Instructions
 
 **StockAnalyzer Pro - Electron Migration**
-**Date:** December 1, 2025
+**Date:** December 2, 2025
 **Branch:** dev
+**Version:** Post-Feature Implementation (HIGH + MEDIUM Priority)
 
 ---
 
@@ -77,90 +78,158 @@ npm run dev
 
 ---
 
-### 2. Stock Rankings View
+### 2. Weight Adjustment Sliders (NEW)
+
+**Location:** Sidebar (below navigation)
+
+**Test Steps:**
+1. Look for the "Weight Adjustment" section in the sidebar
+2. Verify four sliders are present:
+   - [ ] Fundamental (default: 40%)
+   - [ ] Quality (default: 25%)
+   - [ ] Growth (default: 20%)
+   - [ ] Sentiment (default: 15%)
+3. Adjust the Fundamental slider to 60%
+   - [ ] Normalized weights should update below the sliders
+   - [ ] Reset button should appear
+4. Click the reset button (circular arrow icon)
+   - [ ] Weights should return to 40/25/20/15
+   - [ ] Reset button should disappear
+5. Adjust multiple sliders and verify normalization works
+   - [ ] Normalized percentages should always sum to 100%
+
+**Expected Result:** Sliders work, normalization is correct, reset button functions.
+
+---
+
+### 3. Stock Rankings View
 
 **URL:** http://localhost:5173/rankings
 
 **Test Steps:**
 1. Navigate to Rankings from the sidebar
-2. Verify the rankings table loads with columns:
+2. **Verify Top 5 Cards (NEW):**
+   - [ ] "Top 5 Most Undervalued" card with stock cards
+   - [ ] "Top 5 Most Overvalued" card with stock cards
+   - [ ] Each card shows rank, symbol, company, sector, and score
+   - [ ] Clicking a card navigates to Stock Analysis
+3. Verify the rankings table loads with columns:
    - [ ] Rank, Symbol, Company, Sector
-   - [ ] Composite, Fundamental, Quality, Growth, Sentiment scores
+   - [ ] Original Score (composite)
+   - [ ] Fundamental, Quality, Growth, Sentiment scores
    - [ ] Category badge
-3. Test search functionality:
+4. **Test Custom Weight Comparison (NEW):**
+   - Adjust sidebar weights (e.g., set Sentiment to 50%)
+   - [ ] Table should add "Custom" score column
+   - [ ] Table should add "Δ Rank" column showing rank changes
+   - [ ] "Biggest Movers" section should appear below Top 5 cards
+   - [ ] Biggest Movers shows gainers (green) and losers (red)
+5. Test search functionality:
    - [ ] Type "AAPL" in search box - should filter to Apple
    - [ ] Clear search - should show all stocks
-4. Test category filter dropdown:
+6. Test category filter dropdown:
    - [ ] Select "Strong Undervalued" - should filter results
    - [ ] Select "All Categories" - should show all
-5. Test sector filter dropdown:
+7. Test sector filter dropdown:
    - [ ] Select "Technology" - should show only tech stocks
    - [ ] Select "All Sectors" - should show all
-6. Click on column headers to verify sorting works
-7. Click on a stock symbol (e.g., "AAPL") - should navigate to analysis
+8. Click on column headers to verify sorting works
+9. Click on a stock symbol (e.g., "AAPL") - should navigate to analysis
 
-**Expected Result:** Table displays, filters work, sorting works, navigation works.
+**Expected Result:** Top 5 cards display, custom weight comparison works, filters and sorting work.
 
 ---
 
-### 3. Stock Analysis View
+### 4. Stock Analysis View
 
 **URL:** http://localhost:5173/analysis?symbol=AAPL
 
 **Test Steps:**
 1. Navigate to Stock Analysis from sidebar
 2. Enter "AAPL" in the search box and click "Analyze"
-3. Verify the stock header shows:
+3. **Verify Stock Header:**
    - [ ] Symbol (AAPL)
    - [ ] Company name (Apple Inc.)
    - [ ] Sector and Industry
-   - [ ] Composite score
+   - [ ] Composite/Custom score (changes based on weight adjustments)
    - [ ] Outlier category badge
-4. Check the four score cards display:
-   - [ ] Fundamental Score (40% weight)
-   - [ ] Quality Score (25% weight)
-   - [ ] Growth Score (20% weight)
-   - [ ] Sentiment Score (15% weight)
+4. **Check Score Cards with Weight Display (NEW):**
+   - [ ] Fundamental Score shows current weight percentage
+   - [ ] Quality Score shows current weight percentage
+   - [ ] Growth Score shows current weight percentage
+   - [ ] Sentiment Score shows current weight percentage
 5. Verify the radar chart renders with all four components
 6. Check the price history line chart shows 30 days of data
-7. Verify the Key Fundamentals section shows metrics:
-   - [ ] P/E Ratio, Forward P/E, PEG, P/B
-   - [ ] ROE, Debt/Equity, Revenue Growth, etc.
-8. Check the Sentiment Analysis section (if available)
-9. Test with other symbols: MSFT, GOOGL, NVDA
-10. Test with invalid symbol: "INVALID" - should show error
+7. **Verify Historical Trends Charts (NEW):**
+   - [ ] P/E Ratio trend chart
+   - [ ] PEG Ratio trend chart
+   - [ ] Composite Score trend chart
+8. **Verify Investment Insights Section (NEW):**
+   - [ ] "Strengths" card with green border (top 2 components)
+   - [ ] "Areas for Attention" card with amber border (bottom components)
+9. **Verify Metrics with Comparison (NEW):**
+   - [ ] Expandable "Fundamental Metrics" section
+   - [ ] Each metric shows current value, previous value, and trend arrow
+   - [ ] Trend shows percentage change (green up, red down)
+   - [ ] Expandable "Quality Metrics" section
+   - [ ] Expandable "Growth Metrics" section
+10. **Verify Peer Comparison (NEW):**
+    - [ ] "Industry Peers" table shows stocks in same industry
+    - [ ] "Sector Comparison" bar chart shows stock vs sector peers
+    - [ ] Clicking a peer navigates to that stock's analysis
+11. **Verify News & Reddit Sections (NEW):**
+    - [ ] "Recent News" shows news articles with sentiment badges
+    - [ ] Each article shows title, summary, publisher, date
+    - [ ] Sentiment badges: Positive (green), Neutral (gray), Negative (red)
+    - [ ] "Reddit Discussions" shows posts with sentiment badges
+    - [ ] Each post shows title, subreddit, upvotes, comments
+12. Verify the Sentiment Analysis summary section
+13. Test with other symbols: MSFT, GOOGL, NVDA
+14. Test with invalid symbol: "INVALID" - should show error
 
-**Expected Result:** Stock details, scores, charts, and fundamentals display correctly.
+**Expected Result:** All new sections display correctly with data.
 
 ---
 
-### 4. Data Management View
+### 5. Data Management View
 
 **URL:** http://localhost:5173/data
 
 **Test Steps:**
 1. Navigate to Data Management from sidebar
-2. Verify quick stats show:
+2. **Verify Data Source Status Section (NEW):**
+   - [ ] Five data source cards displayed:
+     - Fundamentals, Price Data, News Articles, Reddit Posts, Calculated Metrics
+   - [ ] Each card shows record count
+   - [ ] Each card shows freshness indicator:
+     - Fresh (green) - recently updated
+     - Aging (yellow) - needs refresh soon
+     - Stale (red) - overdue for refresh
+   - [ ] Color-coded left border matches freshness status
+3. **Check Stale Data Warning (NEW):**
+   - [ ] If any source is stale, warning banner appears at top right
+4. Verify quick stats show:
    - [ ] Active Stocks count
    - [ ] Database Size
    - [ ] Pending Sentiment count
    - [ ] Last Calculation date
-3. Check the three action cards are visible:
+5. Check the three action cards are visible:
    - [ ] Data Refresh (blue)
    - [ ] Sentiment Analysis (purple)
    - [ ] Run Calculations (green)
-4. Verify the Database Tables section shows all tables with record counts
-5. **Optional - Test Data Refresh:**
+6. **Verify Database Tables with Status Column (NEW):**
+   - [ ] Table now includes "Status" column with freshness indicators
+7. **Optional - Test Data Refresh:**
    - Click "Sync S&P 500 List" - should show status message
    - (Note: Full data refresh takes time, skip for quick UAT)
-6. **Optional - Test Calculations:**
+8. **Optional - Test Calculations:**
    - Click "Run Calculations" - should show progress
 
-**Expected Result:** Data management interface displays correctly, actions trigger operations.
+**Expected Result:** Data freshness indicators display correctly, all features work.
 
 ---
 
-### 5. Navigation & UI
+### 6. Navigation & UI
 
 **Test Steps:**
 1. Click each sidebar navigation item:
@@ -170,15 +239,19 @@ npm run dev
    - [ ] Data Management - loads data management
 2. Click "Strong Undervalued" quick filter - navigates to filtered rankings
 3. Click "Strong Overvalued" quick filter - navigates to filtered rankings
-4. Verify responsive behavior:
+4. **Test Weight Persistence:**
+   - [ ] Adjust weights on one page
+   - [ ] Navigate to another page
+   - [ ] Weights should persist across pages
+5. Verify responsive behavior:
    - [ ] Resize browser window
    - [ ] Content should remain readable
 
-**Expected Result:** All navigation works, UI is responsive.
+**Expected Result:** All navigation works, weights persist, UI is responsive.
 
 ---
 
-### 6. API Verification (Optional)
+### 7. API Verification (Optional)
 
 Open http://127.0.0.1:8000/api/docs in browser
 
@@ -189,10 +262,40 @@ Open http://127.0.0.1:8000/api/docs in browser
    - [ ] Should return list of stocks
 3. Expand "GET /api/stocks/{symbol}" with "AAPL" and execute
    - [ ] Should return Apple stock details with scores
-4. Expand "GET /api/rankings" and execute
+4. **Test Extended Stock Endpoint (NEW):**
+   - Expand "GET /api/stocks/{symbol}/extended" with "AAPL"
+   - [ ] Should return extended data including:
+     - `news_articles` array
+     - `reddit_posts` array
+     - `historical_metrics` array
+     - `industry_peers` array
+     - `sector_peers` array
+     - `insights` object with strengths and weaknesses
+     - `fundamentals` with `_prev` fields for comparison
+5. Expand "GET /api/rankings" and execute
    - [ ] Should return rankings list
 
 **Expected Result:** All API endpoints respond with correct data.
+
+---
+
+## New Features Summary
+
+| Feature | Location | Status |
+|---------|----------|--------|
+| Weight Adjustment Sliders | Sidebar | NEW |
+| Top 5 Undervalued/Overvalued Cards | Rankings | NEW |
+| Custom Weight Score Comparison | Rankings Table | NEW |
+| Biggest Movers Section | Rankings | NEW |
+| Current vs Previous Metrics | Stock Analysis | NEW |
+| Historical Trend Charts | Stock Analysis | NEW |
+| Investment Insights | Stock Analysis | NEW |
+| News Articles with Sentiment | Stock Analysis | NEW |
+| Reddit Posts with Sentiment | Stock Analysis | NEW |
+| Industry Peer Comparison | Stock Analysis | NEW |
+| Sector Comparison Chart | Stock Analysis | NEW |
+| Data Source Freshness Indicators | Data Management | NEW |
+| Extended Stock API Endpoint | Backend | NEW |
 
 ---
 
@@ -235,6 +338,9 @@ curl "http://127.0.0.1:8000/api/stocks?limit=1" | jq '.total'
 # Get AAPL details
 curl http://127.0.0.1:8000/api/stocks/AAPL | jq '.scores.composite_score'
 
+# Get AAPL extended details (NEW)
+curl http://127.0.0.1:8000/api/stocks/AAPL/extended | jq '.news_articles | length'
+
 # Get rankings count
 curl "http://127.0.0.1:8000/api/rankings?limit=1" | jq '.total'
 ```
@@ -246,9 +352,15 @@ curl "http://127.0.0.1:8000/api/rankings?limit=1" | jq '.total'
 After completing UAT, please confirm:
 
 - [ ] Dashboard displays correctly
+- [ ] **Weight adjustment sliders work (NEW)**
 - [ ] Rankings table works with filtering/sorting
+- [ ] **Top 5 cards and Biggest Movers work (NEW)**
+- [ ] **Custom weight comparison works (NEW)**
 - [ ] Stock analysis shows details and charts
+- [ ] **Historical trends, peer comparison, news/Reddit display (NEW)**
+- [ ] **Investment insights display (NEW)**
 - [ ] Data management interface functional
+- [ ] **Data freshness indicators work (NEW)**
 - [ ] Navigation works throughout app
 - [ ] No critical errors in browser console
 - [ ] Ready to proceed to Phase 5 (Packaging)
@@ -256,3 +368,8 @@ After completing UAT, please confirm:
 **Tester:** _______________
 **Date:** _______________
 **Status:** [ ] PASS / [ ] FAIL with issues
+
+**Notes:**
+_____________________________________________
+_____________________________________________
+_____________________________________________
