@@ -37,17 +37,9 @@ async def get_rankings(
         params = []
 
         if outlier_category:
-            # Calculate outlier category from market percentile
-            if outlier_category == "strong_undervalued":
-                where_clauses.append("cm.sector_percentile <= 20")
-            elif outlier_category == "undervalued":
-                where_clauses.append("cm.sector_percentile > 20 AND cm.sector_percentile <= 35")
-            elif outlier_category == "fairly_valued":
-                where_clauses.append("cm.sector_percentile > 35 AND cm.sector_percentile <= 65")
-            elif outlier_category == "overvalued":
-                where_clauses.append("cm.sector_percentile > 65 AND cm.sector_percentile <= 80")
-            elif outlier_category == "strong_overvalued":
-                where_clauses.append("cm.sector_percentile > 80")
+            # Filter by stored outlier_category
+            where_clauses.append("cm.outlier_category = ?")
+            params.append(outlier_category)
 
         if min_score is not None:
             where_clauses.append("cm.composite_score >= ?")
@@ -102,7 +94,8 @@ async def get_rankings(
                 cm.growth_score,
                 cm.sentiment_score,
                 cm.sector_percentile,
-                cm.data_quality_lower
+                cm.data_quality_lower,
+                cm.outlier_category
             FROM calculated_metrics cm
             JOIN stocks s ON cm.symbol = s.symbol
             {where_sql}
@@ -116,18 +109,8 @@ async def get_rankings(
 
         rankings = []
         for i, row in enumerate(cursor.fetchall()):
-            # Determine outlier category from percentile
-            pct = row[8] if row[8] else 50
-            if pct <= 20:
-                outlier_cat = "strong_undervalued"
-            elif pct <= 35:
-                outlier_cat = "undervalued"
-            elif pct <= 65:
-                outlier_cat = "fairly_valued"
-            elif pct <= 80:
-                outlier_cat = "overvalued"
-            else:
-                outlier_cat = "strong_overvalued"
+            # Use stored outlier_category from database
+            outlier_cat = row[10] if row[10] else "fairly_valued"
 
             rankings.append(RankingEntry(
                 rank=offset + i + 1,
@@ -197,7 +180,8 @@ async def get_sector_rankings(
                 cm.growth_score,
                 cm.sentiment_score,
                 cm.sector_percentile,
-                cm.data_quality_lower
+                cm.data_quality_lower,
+                cm.outlier_category
             FROM calculated_metrics cm
             JOIN stocks s ON cm.symbol = s.symbol
             WHERE s.sector = ? AND cm.composite_score IS NOT NULL
@@ -211,17 +195,8 @@ async def get_sector_rankings(
 
         rankings = []
         for i, row in enumerate(cursor.fetchall()):
-            pct = row[8] if row[8] else 50
-            if pct <= 20:
-                outlier_cat = "strong_undervalued"
-            elif pct <= 35:
-                outlier_cat = "undervalued"
-            elif pct <= 65:
-                outlier_cat = "fairly_valued"
-            elif pct <= 80:
-                outlier_cat = "overvalued"
-            else:
-                outlier_cat = "strong_overvalued"
+            # Use stored outlier_category from database
+            outlier_cat = row[10] if row[10] else "fairly_valued"
 
             rankings.append(RankingEntry(
                 rank=offset + i + 1,
@@ -261,20 +236,15 @@ async def get_outliers(
     try:
         cursor = db.connection.cursor()
 
-        # Map category to percentile ranges
-        category_ranges = {
-            "strong_undervalued": (0, 20),
-            "undervalued": (20, 35),
-            "fairly_valued": (35, 65),
-            "overvalued": (65, 80),
-            "strong_overvalued": (80, 100),
-        }
+        valid_categories = [
+            "strong_undervalued", "undervalued", "fairly_valued",
+            "overvalued", "strong_overvalued"
+        ]
 
-        if category not in category_ranges:
-            return {"error": f"Invalid category. Valid options: {list(category_ranges.keys())}"}
+        if category not in valid_categories:
+            return {"error": f"Invalid category. Valid options: {valid_categories}"}
 
-        min_pct, max_pct = category_ranges[category]
-
+        # Filter by stored outlier_category
         cursor.execute("""
             SELECT
                 s.symbol,
@@ -289,15 +259,15 @@ async def get_outliers(
                 cm.data_quality_lower
             FROM calculated_metrics cm
             JOIN stocks s ON cm.symbol = s.symbol
-            WHERE cm.sector_percentile > ? AND cm.sector_percentile <= ?
-            AND cm.data_quality_lower >= ?
+            WHERE cm.outlier_category = ?
+            AND (cm.data_quality_lower >= ? OR cm.data_quality_lower IS NULL)
             AND cm.created_at = (
                 SELECT MAX(created_at) FROM calculated_metrics cm2
                 WHERE cm2.symbol = cm.symbol
             )
-            ORDER BY cm.composite_score ASC
+            ORDER BY cm.composite_score DESC
             LIMIT ?
-        """, (min_pct, max_pct, min_data_quality, limit))
+        """, (category, min_data_quality, limit))
 
         outliers = []
         for i, row in enumerate(cursor.fetchall()):
