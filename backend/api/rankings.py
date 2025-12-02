@@ -19,7 +19,7 @@ router = APIRouter(prefix="/api/rankings", tags=["rankings"])
 
 @router.get("", response_model=RankingsResponse)
 async def get_rankings(
-    limit: int = Query(50, ge=1, le=500),
+    limit: int = Query(50, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     sort_by: str = Query("composite_score", description="Sort field"),
     ascending: bool = Query(False, description="Sort direction"),

@@ -112,7 +112,7 @@ export function Dashboard() {
     const fetchData = async () => {
       try {
         const [rankingsRes, metricsRes, sectorsRes, healthRes, sectorPerfRes] = await Promise.all([
-          api.getRankings({ limit: 500 }),
+          api.getRankings({ limit: 600 }),  // Get all S&P 500 stocks (507+)
           api.getMetricsSummary(),
           api.getSectors(),
           api.getHealth(),

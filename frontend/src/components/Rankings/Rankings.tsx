@@ -150,7 +150,7 @@ export function Rankings() {
   const { rankings, total, calculationDate, loading, error } = useRankings({
     sector: sector || undefined,
     outlierCategory: category || undefined,
-    limit: 500,
+    limit: 600,  // Get all S&P 500 stocks (507+)
   });
 
   const { sectors } = useSectors();
