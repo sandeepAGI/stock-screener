@@ -2656,12 +2656,27 @@ def main():
         df = load_stock_data()
         stats = get_database_stats()
 
-    if df.empty:
-        st.error("No data available. Please check database connection.")
-        return
-
-    # Create tabs for different views
+    # Create tabs for different views (always show tabs, even with no data)
     tab1, tab2, tab3, tab4 = st.tabs(["📈 Rankings", "📊 Individual Analysis", "🗄️ Data Management", "📚 Methodology"])
+
+    # Handle empty database (fresh install)
+    if df.empty:
+        with tab1:
+            st.info("👋 **Welcome to StockAnalyzer Pro!**")
+            st.markdown("""
+            No stock data available yet. To get started:
+            1. Go to the **🗄️ Data Management** tab
+            2. Run **Step 1: Collect Data** to fetch S&P 500 stock data
+            3. Run **Step 2: Process Sentiment** for AI-powered analysis
+            4. Run **Step 3: Calculate Rankings** to generate scores
+            """)
+        with tab2:
+            st.info("📊 Individual stock analysis will be available after data collection.")
+        with tab3:
+            show_data_management()
+        with tab4:
+            show_methodology_guide()
+        return  # Skip data-dependent content below when database is empty
 
     with tab1:
         # Check if weights have been adjusted
