@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { TrendingDown, TrendingUp, Activity, BarChart3 } from 'lucide-react';
+import { TrendingDown, TrendingUp, Activity, BarChart3, Factory } from 'lucide-react';
 import {
   BarChart,
   Bar,
@@ -21,7 +21,18 @@ import { Loading } from '../common/Loading';
 import { ScoreBadge } from '../common/ScoreBadge';
 import type { RankingEntry, MetricsSummary, SectorInfo } from '../../types';
 
-// Stock card component for Top 5 lists
+// Sector performance data type
+interface SectorPerformance {
+  sector: string;
+  stock_count: number;
+  avg_composite: number | null;
+  avg_fundamental: number | null;
+  avg_quality: number | null;
+  avg_growth: number | null;
+  avg_sentiment: number | null;
+}
+
+// Stock card component for Top 5 lists - matching Streamlit's show_top_performers
 function TopStockCard({
   stock,
   rank,
@@ -31,38 +42,40 @@ function TopStockCard({
   stock: RankingEntry;
   rank: number;
   type: 'undervalued' | 'overvalued';
-  customScore?: number;
+  customScore: number;
 }) {
-  const bgColor = type === 'undervalued' ? 'bg-emerald-50' : 'bg-red-50';
-  const borderColor = type === 'undervalued' ? 'border-emerald-200' : 'border-red-200';
-  const iconBgColor = type === 'undervalued' ? 'bg-emerald-100' : 'bg-red-100';
-  const iconColor = type === 'undervalued' ? 'text-emerald-600' : 'text-red-600';
-  const Icon = type === 'undervalued' ? TrendingDown : TrendingUp;
+  const borderColor = type === 'undervalued' ? 'border-l-green-500' : 'border-l-red-500';
+  const bgColor = type === 'undervalued' ? 'bg-green-50' : 'bg-red-50';
 
   return (
     <Link
       to={`/analysis?symbol=${stock.symbol}`}
-      className={`flex items-center justify-between p-3 rounded-lg border ${bgColor} ${borderColor} hover:shadow-md transition-all`}
+      className={`block p-3 rounded-lg border-l-4 ${borderColor} ${bgColor} hover:shadow-md transition-all mb-2`}
     >
-      <div className="flex items-center gap-3">
-        <div className={`w-8 h-8 ${iconBgColor} rounded-lg flex items-center justify-center`}>
-          <span className={`text-sm font-bold ${iconColor}`}>#{rank}</span>
-        </div>
-        <div>
+      <div className="flex items-center justify-between">
+        <div className="flex-1">
           <div className="flex items-center gap-2">
-            <p className="font-semibold text-gray-900">{stock.symbol}</p>
-            <Icon className={`w-4 h-4 ${iconColor}`} />
+            <span className="font-bold text-gray-900">{stock.symbol}</span>
+            {type === 'undervalued' ? (
+              <TrendingDown className="w-4 h-4 text-green-600" />
+            ) : (
+              <TrendingUp className="w-4 h-4 text-red-600" />
+            )}
           </div>
-          <p className="text-xs text-gray-500 truncate max-w-[120px]">{stock.company_name}</p>
+          <p className="text-xs text-gray-500 truncate">{stock.company_name}</p>
         </div>
-      </div>
-      <div className="text-right">
-        <ScoreBadge score={customScore ?? stock.composite_score} size="sm" />
-        {customScore !== undefined && customScore !== stock.composite_score && (
-          <p className="text-xs text-gray-400 mt-0.5">
-            Orig: {stock.composite_score.toFixed(1)}
-          </p>
-        )}
+        <div className="text-center px-3">
+          <p className="text-xs text-gray-500">Sector</p>
+          <p className="text-xs font-medium text-gray-700 truncate max-w-[80px]">{stock.sector}</p>
+        </div>
+        <div className="text-center px-3">
+          <p className="text-xs text-gray-500">Score</p>
+          <ScoreBadge score={customScore} size="sm" />
+        </div>
+        <div className="text-center">
+          <p className="text-xs text-gray-500">Rank</p>
+          <p className="text-sm font-bold text-gray-900">#{rank}</p>
+        </div>
       </div>
     </Link>
   );
@@ -89,6 +102,7 @@ export function Dashboard() {
   const [rankings, setRankings] = useState<RankingEntry[]>([]);
   const [metrics, setMetrics] = useState<MetricsSummary | null>(null);
   const [sectors, setSectors] = useState<SectorInfo[]>([]);
+  const [sectorPerformance, setSectorPerformance] = useState<SectorPerformance[]>([]);
   const [loading, setLoading] = useState(true);
   const [health, setHealth] = useState<{ status: string; version: string } | null>(null);
 
@@ -97,16 +111,18 @@ export function Dashboard() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [rankingsRes, metricsRes, sectorsRes, healthRes] = await Promise.all([
+        const [rankingsRes, metricsRes, sectorsRes, healthRes, sectorPerfRes] = await Promise.all([
           api.getRankings({ limit: 500 }),
           api.getMetricsSummary(),
           api.getSectors(),
           api.getHealth(),
+          api.getSectorPerformance(),
         ]);
         setRankings(rankingsRes.rankings);
         setMetrics(metricsRes);
         setSectors(sectorsRes.sectors);
         setHealth(healthRes);
+        setSectorPerformance(sectorPerfRes.sectors);
       } catch (error) {
         console.error('Failed to fetch dashboard data:', error);
       } finally {
@@ -119,42 +135,31 @@ export function Dashboard() {
 
   // Calculate custom scores and re-rank if weights changed
   const rankedStocks = useMemo(() => {
-    if (isDefault) {
-      return rankings.map((r) => ({ ...r, customScore: r.composite_score }));
-    }
-
-    const withCustom = rankings.map((r) => ({
+    const withCustom = rankings.map((r, originalIndex) => ({
       ...r,
-      customScore: calculateCustomScore({
-        fundamental: r.fundamental_score,
-        quality: r.quality_score,
-        growth: r.growth_score,
-        sentiment: r.sentiment_score,
-      }),
+      customScore: isDefault
+        ? r.composite_score
+        : calculateCustomScore({
+            fundamental: r.fundamental_score,
+            quality: r.quality_score,
+            growth: r.growth_score,
+            sentiment: r.sentiment_score,
+          }),
+      originalRank: originalIndex + 1,
     }));
 
-    // Sort by custom score
+    // Sort by custom score (descending - highest score first)
     return [...withCustom].sort((a, b) => b.customScore - a.customScore);
   }, [rankings, isDefault, calculateCustomScore]);
 
-  // Top 5 undervalued (highest scores)
+  // Top 5 Undervalued = Top 5 highest scores (best stocks)
   const top5Undervalued = useMemo(() => {
-    return rankedStocks
-      .filter(
-        (r) =>
-          r.outlier_category === 'strong_undervalued' || r.outlier_category === 'undervalued'
-      )
-      .slice(0, 5);
+    return rankedStocks.slice(0, 5);
   }, [rankedStocks]);
 
-  // Top 5 overvalued (lowest scores)
+  // Top 5 Overvalued = Bottom 5 lowest scores (worst stocks)
   const top5Overvalued = useMemo(() => {
-    return rankedStocks
-      .filter(
-        (r) => r.outlier_category === 'strong_overvalued' || r.outlier_category === 'overvalued'
-      )
-      .sort((a, b) => a.customScore - b.customScore)
-      .slice(0, 5);
+    return [...rankedStocks].sort((a, b) => a.customScore - b.customScore).slice(0, 5);
   }, [rankedStocks]);
 
   // Score distribution histogram data
@@ -197,11 +202,31 @@ export function Dashboard() {
     }));
   }, [rankedStocks]);
 
-  // Average score
-  const avgScore = useMemo(() => {
-    if (rankedStocks.length === 0) return 0;
-    const sum = rankedStocks.reduce((acc, r) => acc + r.customScore, 0);
-    return sum / rankedStocks.length;
+  // Statistical summary calculations
+  const stats = useMemo(() => {
+    if (rankedStocks.length === 0) {
+      return { mean: 0, median: 0, std: 0, q25: 0, q75: 0, iqr: 0 };
+    }
+
+    const scores = rankedStocks.map((r) => r.customScore).sort((a, b) => a - b);
+    const n = scores.length;
+
+    // Mean
+    const mean = scores.reduce((a, b) => a + b, 0) / n;
+
+    // Median
+    const median = n % 2 === 0 ? (scores[n / 2 - 1] + scores[n / 2]) / 2 : scores[Math.floor(n / 2)];
+
+    // Standard deviation
+    const variance = scores.reduce((acc, s) => acc + Math.pow(s - mean, 2), 0) / n;
+    const std = Math.sqrt(variance);
+
+    // Quartiles
+    const q25 = scores[Math.floor(n * 0.25)];
+    const q75 = scores[Math.floor(n * 0.75)];
+    const iqr = q75 - q25;
+
+    return { mean, median, std, q25, q75, iqr };
   }, [rankedStocks]);
 
   if (loading) {
@@ -219,14 +244,14 @@ export function Dashboard() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-          <p className="text-gray-500">Overview of stock analysis data</p>
+          <h1 className="text-2xl font-bold text-gray-900">Analysis Summary</h1>
+          <p className="text-gray-500">S&amp;P 500 Stock Analysis Dashboard</p>
         </div>
         <div className="flex items-center gap-4">
           {!isDefault && (
-            <div className="text-right text-xs">
-              <p className="text-gray-500">Custom Weights Active</p>
-              <p className="font-medium text-blue-600">
+            <div className="text-right text-xs bg-blue-50 px-3 py-2 rounded-lg border border-blue-200">
+              <p className="text-blue-600 font-medium">Custom Weights Active</p>
+              <p className="text-blue-800">
                 F:{(normalizedWeights.fundamental * 100).toFixed(0)}% /
                 Q:{(normalizedWeights.quality * 100).toFixed(0)}% /
                 G:{(normalizedWeights.growth * 100).toFixed(0)}% /
@@ -243,52 +268,51 @@ export function Dashboard() {
         </div>
       </div>
 
-      {/* Metrics Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+      {/* Summary Metrics - matching Streamlit */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard
-          label="Active Stocks"
-          value={metrics?.active_stocks || 0}
-          subvalue={`of ${metrics?.total_stocks || 0} total`}
+          label="Stocks Analyzed"
+          value={`${metrics?.active_stocks || 0}/${metrics?.total_stocks || 0}`}
+          subvalue={`${metrics?.active_stocks && metrics?.total_stocks ? ((metrics.active_stocks / metrics.total_stocks) * 100).toFixed(1) : 0}%`}
         />
         <MetricCard
-          label="Database Size"
-          value={`${metrics?.database_size_mb?.toFixed(1) || 0} MB`}
-          subvalue={`${metrics?.tables?.length || 0} tables`}
-        />
-        <MetricCard label="Sectors" value={sectors.length} subvalue="Active sectors" />
-        <MetricCard
-          label="Avg Score"
-          value={avgScore.toFixed(1)}
-          subvalue={isDefault ? 'Original weights' : 'Custom weights'}
+          label="Data Quality"
+          value="Enhanced"
+          subvalue="v1.1 fallbacks"
         />
         <MetricCard
-          label="Last Calculation"
+          label="Last Updated"
           value={
             metrics?.last_calculation
               ? new Date(metrics.last_calculation).toLocaleDateString()
               : 'Never'
           }
-          subvalue="Composite scores"
+          subvalue="Auto-refresh"
+        />
+        <MetricCard
+          label="Avg Score"
+          value={stats.mean.toFixed(1)}
+          subvalue="Market baseline"
         />
       </div>
 
-      {/* Top 5 Undervalued & Overvalued */}
+      {/* Performance Leaders - matching Streamlit show_top_performers */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Top 5 Undervalued */}
+        {/* Most Undervalued (Top 5) */}
         <Card>
           <CardHeader
-            title="Top 5 Undervalued"
-            subtitle={isDefault ? 'Highest potential stocks' : 'Based on custom weights'}
+            title="Most Undervalued (Top 5)"
+            subtitle={isDefault ? 'Highest scoring stocks' : 'Based on custom weights'}
             action={
               <Link
-                to="/rankings?category=strong_undervalued"
-                className="text-sm text-blue-600 hover:text-blue-800"
+                to="/rankings"
+                className="text-sm text-green-600 hover:text-green-800"
               >
                 View all
               </Link>
             }
           />
-          <div className="space-y-2">
+          <div>
             {top5Undervalued.length > 0 ? (
               top5Undervalued.map((stock, i) => (
                 <TopStockCard
@@ -296,48 +320,48 @@ export function Dashboard() {
                   stock={stock}
                   rank={i + 1}
                   type="undervalued"
-                  customScore={isDefault ? undefined : stock.customScore}
+                  customScore={stock.customScore}
                 />
               ))
             ) : (
-              <p className="text-sm text-gray-500 text-center py-4">No undervalued stocks found</p>
+              <p className="text-sm text-gray-500 text-center py-4">No data available</p>
             )}
           </div>
         </Card>
 
-        {/* Top 5 Overvalued */}
+        {/* Most Overvalued (Bottom 5) */}
         <Card>
           <CardHeader
-            title="Top 5 Overvalued"
-            subtitle={isDefault ? 'Potentially overpriced stocks' : 'Based on custom weights'}
+            title="Most Overvalued (Bottom 5)"
+            subtitle={isDefault ? 'Lowest scoring stocks' : 'Based on custom weights'}
             action={
               <Link
-                to="/rankings?category=strong_overvalued"
-                className="text-sm text-blue-600 hover:text-blue-800"
+                to="/rankings?ascending=true"
+                className="text-sm text-red-600 hover:text-red-800"
               >
                 View all
               </Link>
             }
           />
-          <div className="space-y-2">
+          <div>
             {top5Overvalued.length > 0 ? (
               top5Overvalued.map((stock, i) => (
                 <TopStockCard
                   key={stock.symbol}
                   stock={stock}
-                  rank={i + 1}
+                  rank={rankedStocks.length - i}
                   type="overvalued"
-                  customScore={isDefault ? undefined : stock.customScore}
+                  customScore={stock.customScore}
                 />
               ))
             ) : (
-              <p className="text-sm text-gray-500 text-center py-4">No overvalued stocks found</p>
+              <p className="text-sm text-gray-500 text-center py-4">No data available</p>
             )}
           </div>
         </Card>
       </div>
 
-      {/* Distribution Charts */}
+      {/* Distribution Analysis - matching Streamlit */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Score Distribution Histogram */}
         <Card>
@@ -367,15 +391,10 @@ export function Dashboard() {
                   }}
                 />
                 <Bar dataKey="count" radius={[4, 4, 0, 0]}>
-                  {histogramData.map((entry, index) => {
-                    // Color based on score range
-                    let color = '#6b7280'; // gray for middle
-                    if (entry.max <= 35) color = '#ef4444'; // red for low
-                    else if (entry.max <= 50) color = '#f97316'; // orange
-                    else if (entry.min >= 65) color = '#10b981'; // green for high
-                    else if (entry.min >= 50) color = '#3b82f6'; // blue
-                    return <Cell key={`cell-${index}`} fill={color} />;
-                  })}
+                  {histogramData.map((_, index) => (
+                    // Color based on score range - matching Streamlit blue theme
+                    <Cell key={`cell-${index}`} fill="#636EFA" />
+                  ))}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
@@ -432,7 +451,103 @@ export function Dashboard() {
         </Card>
       </div>
 
-      {/* Sector Distribution */}
+      {/* Statistical Summary - matching Streamlit */}
+      <Card>
+        <CardHeader title="Statistical Summary" subtitle="Score distribution statistics" />
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+          <div className="p-3 bg-gray-50 rounded-lg text-center">
+            <p className="text-sm text-gray-500">Mean Score</p>
+            <p className="text-xl font-bold text-gray-900">{stats.mean.toFixed(1)}</p>
+          </div>
+          <div className="p-3 bg-gray-50 rounded-lg text-center">
+            <p className="text-sm text-gray-500">Std Deviation</p>
+            <p className="text-xl font-bold text-gray-900">{stats.std.toFixed(1)}</p>
+          </div>
+          <div className="p-3 bg-gray-50 rounded-lg text-center">
+            <p className="text-sm text-gray-500">Median Score</p>
+            <p className="text-xl font-bold text-gray-900">{stats.median.toFixed(1)}</p>
+          </div>
+          <div className="p-3 bg-gray-50 rounded-lg text-center">
+            <p className="text-sm text-gray-500">IQR</p>
+            <p className="text-xl font-bold text-gray-900">{stats.iqr.toFixed(1)}</p>
+          </div>
+          <div className="p-3 bg-gray-50 rounded-lg text-center">
+            <p className="text-sm text-gray-500">75th Percentile</p>
+            <p className="text-xl font-bold text-gray-900">{stats.q75.toFixed(1)}</p>
+          </div>
+          <div className="p-3 bg-gray-50 rounded-lg text-center">
+            <p className="text-sm text-gray-500">25th Percentile</p>
+            <p className="text-xl font-bold text-gray-900">{stats.q25.toFixed(1)}</p>
+          </div>
+        </div>
+      </Card>
+
+      {/* Sector Performance - matching Streamlit */}
+      <Card>
+        <CardHeader
+          title="Sector Performance"
+          subtitle="Average scores by sector"
+          action={<Factory className="w-5 h-5 text-gray-400" />}
+        />
+        <div className="overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Sector
+                </th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Avg Composite
+                </th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Stock Count
+                </th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Avg Fund
+                </th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Avg Quality
+                </th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Avg Growth
+                </th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Avg Sentiment
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {sectorPerformance.map((sector) => (
+                <tr key={sector.sector} className="hover:bg-gray-50">
+                  <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
+                    {sector.sector}
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-right">
+                    <ScoreBadge score={sector.avg_composite ?? 0} size="sm" />
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 text-right">
+                    {sector.stock_count}
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 text-right">
+                    {sector.avg_fundamental?.toFixed(1) ?? '-'}
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 text-right">
+                    {sector.avg_quality?.toFixed(1) ?? '-'}
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 text-right">
+                    {sector.avg_growth?.toFixed(1) ?? '-'}
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 text-right">
+                    {sector.avg_sentiment?.toFixed(1) ?? '-'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      {/* Sector Distribution Bar Chart */}
       <Card>
         <CardHeader title="Sector Distribution" subtitle="Stocks by sector" />
         <div className="h-64">
@@ -448,20 +563,18 @@ export function Dashboard() {
         </div>
       </Card>
 
-      {/* Data Tables */}
-      <Card>
-        <CardHeader title="Data Tables" subtitle="Record counts by table" />
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {metrics?.tables?.slice(0, 8).map((table) => (
-            <div key={table.name} className="p-3 bg-gray-50 rounded-lg">
-              <p className="text-sm font-medium text-gray-600">{table.name.replace(/_/g, ' ')}</p>
-              <p className="text-lg font-semibold text-gray-900">
-                {table.record_count.toLocaleString()}
-              </p>
-            </div>
-          ))}
-        </div>
-      </Card>
+      {/* Footer */}
+      <div className="text-center text-sm text-gray-500 border-t pt-4">
+        <p>
+          <strong>Methodology:</strong> 4-component weighted analysis (Fundamental 40%, Quality 25%, Growth 20%, Sentiment 15%)
+        </p>
+        <p>
+          <strong>Data Sources:</strong> Yahoo Finance, Reddit API
+        </p>
+        <p className="mt-2 text-amber-600">
+          Disclaimer: For educational purposes only. Not investment advice.
+        </p>
+      </div>
     </div>
   );
 }

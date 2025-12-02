@@ -72,12 +72,16 @@ async def get_rankings(
         sort_field = valid_sort_fields.get(sort_by, "cm.composite_score")
         sort_dir = "ASC" if ascending else "DESC"
 
-        # Get total count
+        # Get total count (only count latest record per symbol)
         cursor.execute(f"""
             SELECT COUNT(*)
             FROM calculated_metrics cm
             JOIN stocks s ON cm.symbol = s.symbol
             {where_sql}
+            AND cm.created_at = (
+                SELECT MAX(created_at) FROM calculated_metrics cm2
+                WHERE cm2.symbol = cm.symbol
+            )
         """, params)
         total = cursor.fetchone()[0]
 
@@ -86,7 +90,7 @@ async def get_rankings(
         calc_date_row = cursor.fetchone()
         calc_date = calc_date_row[0] if calc_date_row else date.today()
 
-        # Get rankings
+        # Get rankings (only latest record per symbol)
         cursor.execute(f"""
             SELECT
                 s.symbol,
@@ -102,6 +106,10 @@ async def get_rankings(
             FROM calculated_metrics cm
             JOIN stocks s ON cm.symbol = s.symbol
             {where_sql}
+            AND cm.created_at = (
+                SELECT MAX(created_at) FROM calculated_metrics cm2
+                WHERE cm2.symbol = cm.symbol
+            )
             ORDER BY {sort_field} {sort_dir}
             LIMIT ? OFFSET ?
         """, params + [limit, offset])
@@ -159,12 +167,16 @@ async def get_sector_rankings(
     try:
         cursor = db.connection.cursor()
 
-        # Get total count for sector
+        # Get total count for sector (only latest record per symbol)
         cursor.execute("""
             SELECT COUNT(*)
             FROM calculated_metrics cm
             JOIN stocks s ON cm.symbol = s.symbol
             WHERE s.sector = ? AND cm.composite_score IS NOT NULL
+            AND cm.created_at = (
+                SELECT MAX(created_at) FROM calculated_metrics cm2
+                WHERE cm2.symbol = cm.symbol
+            )
         """, (sector,))
         total = cursor.fetchone()[0]
 
@@ -173,7 +185,7 @@ async def get_sector_rankings(
         calc_date_row = cursor.fetchone()
         calc_date = calc_date_row[0] if calc_date_row else date.today()
 
-        # Get sector rankings
+        # Get sector rankings (only latest record per symbol)
         cursor.execute("""
             SELECT
                 s.symbol,
@@ -189,6 +201,10 @@ async def get_sector_rankings(
             FROM calculated_metrics cm
             JOIN stocks s ON cm.symbol = s.symbol
             WHERE s.sector = ? AND cm.composite_score IS NOT NULL
+            AND cm.created_at = (
+                SELECT MAX(created_at) FROM calculated_metrics cm2
+                WHERE cm2.symbol = cm.symbol
+            )
             ORDER BY cm.composite_score DESC
             LIMIT ? OFFSET ?
         """, (sector, limit, offset))
@@ -275,6 +291,10 @@ async def get_outliers(
             JOIN stocks s ON cm.symbol = s.symbol
             WHERE cm.sector_percentile > ? AND cm.sector_percentile <= ?
             AND cm.data_quality_lower >= ?
+            AND cm.created_at = (
+                SELECT MAX(created_at) FROM calculated_metrics cm2
+                WHERE cm2.symbol = cm.symbol
+            )
             ORDER BY cm.composite_score ASC
             LIMIT ?
         """, (min_pct, max_pct, min_data_quality, limit))
@@ -302,6 +322,57 @@ async def get_outliers(
             "category": category,
             "outliers": outliers,
             "total": len(outliers)
+        }
+
+    finally:
+        db.close()
+
+
+@router.get("/sector-performance")
+async def get_sector_performance():
+    """Get sector performance summary matching Streamlit dashboard"""
+    db = get_database_connection()
+    try:
+        cursor = db.connection.cursor()
+
+        # Get sector statistics (only latest record per symbol)
+        cursor.execute("""
+            SELECT
+                s.sector,
+                COUNT(*) as stock_count,
+                AVG(cm.composite_score) as avg_composite,
+                AVG(cm.fundamental_score) as avg_fundamental,
+                AVG(cm.quality_score) as avg_quality,
+                AVG(cm.growth_score) as avg_growth,
+                AVG(cm.sentiment_score) as avg_sentiment
+            FROM calculated_metrics cm
+            JOIN stocks s ON cm.symbol = s.symbol
+            WHERE cm.composite_score IS NOT NULL
+            AND cm.created_at = (
+                SELECT MAX(created_at) FROM calculated_metrics cm2
+                WHERE cm2.symbol = cm.symbol
+            )
+            GROUP BY s.sector
+            ORDER BY AVG(cm.composite_score) DESC
+        """)
+
+        sectors = []
+        for row in cursor.fetchall():
+            sectors.append({
+                "sector": row[0],
+                "stock_count": row[1],
+                "avg_composite": round(row[2], 1) if row[2] else None,
+                "avg_fundamental": round(row[3], 1) if row[3] else None,
+                "avg_quality": round(row[4], 1) if row[4] else None,
+                "avg_growth": round(row[5], 1) if row[5] else None,
+                "avg_sentiment": round(row[6], 1) if row[6] else None
+            })
+
+        cursor.close()
+
+        return {
+            "sectors": sectors,
+            "total_sectors": len(sectors)
         }
 
     finally:

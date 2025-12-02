@@ -130,6 +130,21 @@ class ApiClient {
     return this.fetch(`/api/rankings/outliers/${category}${query ? `?${query}` : ''}`);
   }
 
+  async getSectorPerformance(): Promise<{
+    sectors: Array<{
+      sector: string;
+      stock_count: number;
+      avg_composite: number | null;
+      avg_fundamental: number | null;
+      avg_quality: number | null;
+      avg_growth: number | null;
+      avg_sentiment: number | null;
+    }>;
+    total_sectors: number;
+  }> {
+    return this.fetch('/api/rankings/sector-performance');
+  }
+
   // Data Management
   async refreshData(request: DataRefreshRequest): Promise<DataRefreshResponse> {
     return this.fetch('/api/data/refresh', {
