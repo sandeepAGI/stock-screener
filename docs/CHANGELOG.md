@@ -2,6 +2,28 @@
 
 All notable changes to StockAnalyzer Pro.
 
+## December 1, 2025 - Electron Migration Phase 2
+
+### Added
+
+- Electron desktop shell (`electron/`)
+- Main process with Python backend lifecycle management
+- Preload script for secure IPC bridge
+- Native macOS menu with keyboard shortcuts
+- Splash screen during startup
+- App icon placeholder (SVG)
+- electron-builder configuration for macOS packaging
+
+### Features
+
+- Automatic Python backend startup/shutdown
+- Development mode with hot reload
+- Graceful shutdown handling
+- External link handling
+- Error dialogs for startup issues
+
+---
+
 ## December 1, 2025 - Electron Migration Phase 1
 
 ### Added

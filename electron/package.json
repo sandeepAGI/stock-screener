@@ -1,0 +1,84 @@
+{
+  "name": "stockanalyzer-pro",
+  "version": "1.0.0",
+  "description": "StockAnalyzer Pro - Desktop Stock Analysis Application",
+  "main": "main.js",
+  "author": {
+    "name": "StockAnalyzer Team"
+  },
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "build": "electron-builder",
+    "build:mac": "electron-builder --mac"
+  },
+  "dependencies": {
+    "electron-store": "^8.1.0"
+  },
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1"
+  },
+  "build": {
+    "appId": "com.stockanalyzer.pro",
+    "productName": "StockAnalyzer Pro",
+    "mac": {
+      "category": "public.app-category.finance",
+      "icon": "assets/icon.icns",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["arm64", "x64"]
+        }
+      ],
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false
+    },
+    "dmg": {
+      "title": "StockAnalyzer Pro",
+      "contents": [
+        {
+          "x": 130,
+          "y": 220
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "assets/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "../backend",
+        "to": "backend",
+        "filter": ["**/*", "!__pycache__", "!*.pyc"]
+      },
+      {
+        "from": "../src",
+        "to": "src",
+        "filter": ["**/*", "!__pycache__", "!*.pyc"]
+      },
+      {
+        "from": "../config",
+        "to": "config",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "../data/stock_data_template.db",
+        "to": "data/stock_data_template.db"
+      }
+    ],
+    "directories": {
+      "output": "../dist",
+      "buildResources": "assets"
+    }
+  }
+}
