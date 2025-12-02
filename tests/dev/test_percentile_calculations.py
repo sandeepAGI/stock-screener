@@ -57,17 +57,19 @@ def test_percentile_calculations(df):
     df['sector_percentile'] = df.groupby('sector')['composite_score'].rank(pct=True) * 100
     
     # Add outlier categories
+    # High percentile (high score) = undervalued (good value)
+    # Low percentile (low score) = overvalued (expensive)
     def get_outlier_category(market_pct):
         if market_pct <= 20:
-            return 'strong_undervalued'
+            return 'strong_overvalued'
         elif market_pct <= 35:
-            return 'undervalued'
+            return 'overvalued'
         elif market_pct <= 65:
             return 'fairly_valued'
         elif market_pct <= 80:
-            return 'overvalued'
+            return 'undervalued'
         else:
-            return 'strong_overvalued'
+            return 'strong_undervalued'
     
     df['outlier_category'] = df['market_percentile'].apply(get_outlier_category)
     
