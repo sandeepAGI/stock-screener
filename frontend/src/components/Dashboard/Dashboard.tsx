@@ -13,6 +13,7 @@ import {
   ScatterChart,
   Scatter,
   ZAxis,
+  ReferenceArea,
   ReferenceLine,
 } from 'recharts';
 import { api } from '../../api/client';
@@ -202,7 +203,10 @@ export function Dashboard() {
 
   // Box plot data - calculate outliers using IQR method
   const boxPlotData = useMemo(() => {
-    if (rankedStocks.length === 0) return { outliers: [], nonOutliers: [], q1: 0, q3: 0, median: 0, lowerFence: 0, upperFence: 0 };
+    if (rankedStocks.length === 0) return {
+      outliers: [], nonOutliers: [], q1: 0, q3: 0, median: 0,
+      lowerFence: 0, upperFence: 0, min: 0, max: 0, whiskerLow: 0, whiskerHigh: 0
+    };
 
     const scores = rankedStocks.map((r) => r.customScore).sort((a, b) => a - b);
     const n = scores.length;
@@ -213,11 +217,17 @@ export function Dashboard() {
     const iqr = q3 - q1;
     const lowerFence = q1 - 1.5 * iqr;
     const upperFence = q3 + 1.5 * iqr;
+    const min = scores[0];
+    const max = scores[n - 1];
+
+    // Whiskers extend to the most extreme data points within the fences
+    const whiskerLow = Math.max(min, lowerFence);
+    const whiskerHigh = Math.min(max, upperFence);
 
     const outliers = rankedStocks.filter(
       (r) => r.customScore < lowerFence || r.customScore > upperFence
     ).map((r) => ({
-      x: 0.3 + Math.random() * 0.4, // Jitter for visibility
+      x: 0.5, // Center the outliers
       y: r.customScore,
       symbol: r.symbol,
       company: r.company_name,
@@ -226,13 +236,13 @@ export function Dashboard() {
     const nonOutliers = rankedStocks.filter(
       (r) => r.customScore >= lowerFence && r.customScore <= upperFence
     ).map((r) => ({
-      x: 0.3 + Math.random() * 0.4, // Jitter for visibility
+      x: 0.15 + Math.random() * 0.2, // Jitter to the left of the box
       y: r.customScore,
       symbol: r.symbol,
       company: r.company_name,
     }));
 
-    return { outliers, nonOutliers, q1, q3, median, lowerFence, upperFence };
+    return { outliers, nonOutliers, q1, q3, median, lowerFence, upperFence, min, max, whiskerLow, whiskerHigh };
   }, [rankedStocks]);
 
   // Statistical summary calculations
@@ -513,24 +523,25 @@ export function Dashboard() {
           />
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <ScatterChart margin={{ top: 20, right: 80, left: 20, bottom: 20 }}>
+              <ScatterChart margin={{ top: 20, right: 20, left: 20, bottom: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} />
                 <XAxis type="number" dataKey="x" domain={[0, 1]} hide />
                 <YAxis
                   type="number"
                   dataKey="y"
-                  domain={['auto', 'auto']}
+                  domain={[boxPlotData.min - 2, boxPlotData.max + 2]}
                   label={{ value: 'Composite Score', angle: -90, position: 'insideLeft' }}
                 />
-                <ZAxis range={[30, 30]} />
+                <ZAxis range={[25, 25]} />
                 <Tooltip
                   content={({ active, payload }) => {
                     if (active && payload && payload.length) {
                       const data = payload[0].payload;
                       if (data.symbol) {
+                        const isOutlier = data.x === 0.5;
                         return (
                           <div className="bg-white p-2 border border-gray-200 rounded shadow-sm">
-                            <p className="font-bold">{data.symbol}</p>
+                            <p className="font-bold">{data.symbol} {isOutlier && '(OUTLIER)'}</p>
                             <p className="text-sm text-gray-600">Score: {data.y.toFixed(2)}</p>
                             <p className="text-xs text-gray-500">{data.company}</p>
                           </div>
@@ -540,37 +551,78 @@ export function Dashboard() {
                     return null;
                   }}
                 />
-                {/* IQR reference lines */}
-                <ReferenceLine y={boxPlotData.q3} stroke="#636EFA" strokeWidth={2} label={{ value: `Q3: ${boxPlotData.q3.toFixed(1)}`, position: 'right', fontSize: 10 }} />
-                <ReferenceLine y={boxPlotData.median} stroke="#636EFA" strokeWidth={3} strokeDasharray="5 5" label={{ value: `Median: ${boxPlotData.median.toFixed(1)}`, position: 'right', fontSize: 10 }} />
-                <ReferenceLine y={boxPlotData.q1} stroke="#636EFA" strokeWidth={2} label={{ value: `Q1: ${boxPlotData.q1.toFixed(1)}`, position: 'right', fontSize: 10 }} />
-                {/* Non-outlier points */}
+                {/* Box (IQR area from Q1 to Q3) */}
+                <ReferenceArea
+                  x1={0.4}
+                  x2={0.6}
+                  y1={boxPlotData.q1}
+                  y2={boxPlotData.q3}
+                  fill="#636EFA"
+                  fillOpacity={0.3}
+                  stroke="#636EFA"
+                  strokeWidth={2}
+                />
+                {/* Median line */}
+                <ReferenceLine
+                  segment={[{ x: 0.4, y: boxPlotData.median }, { x: 0.6, y: boxPlotData.median }]}
+                  stroke="#636EFA"
+                  strokeWidth={3}
+                />
+                {/* Lower whisker vertical line */}
+                <ReferenceLine
+                  segment={[{ x: 0.5, y: boxPlotData.whiskerLow }, { x: 0.5, y: boxPlotData.q1 }]}
+                  stroke="#636EFA"
+                  strokeWidth={2}
+                />
+                {/* Upper whisker vertical line */}
+                <ReferenceLine
+                  segment={[{ x: 0.5, y: boxPlotData.q3 }, { x: 0.5, y: boxPlotData.whiskerHigh }]}
+                  stroke="#636EFA"
+                  strokeWidth={2}
+                />
+                {/* Lower whisker cap */}
+                <ReferenceLine
+                  segment={[{ x: 0.45, y: boxPlotData.whiskerLow }, { x: 0.55, y: boxPlotData.whiskerLow }]}
+                  stroke="#636EFA"
+                  strokeWidth={2}
+                />
+                {/* Upper whisker cap */}
+                <ReferenceLine
+                  segment={[{ x: 0.45, y: boxPlotData.whiskerHigh }, { x: 0.55, y: boxPlotData.whiskerHigh }]}
+                  stroke="#636EFA"
+                  strokeWidth={2}
+                />
+                {/* Non-outlier scatter points */}
                 <Scatter
                   name="Normal Range"
                   data={boxPlotData.nonOutliers}
-                  fill="rgba(99, 110, 250, 0.4)"
-                  stroke="rgba(99, 110, 250, 0.6)"
+                  fill="rgba(99, 110, 250, 0.3)"
+                  stroke="rgba(99, 110, 250, 0.5)"
                 />
-                {/* Outlier points */}
-                <Scatter
-                  name="Outliers"
-                  data={boxPlotData.outliers}
-                  fill="#FF6B6B"
-                  stroke="#C92A2A"
-                  shape="diamond"
-                />
+                {/* Outlier scatter points */}
+                {boxPlotData.outliers.length > 0 && (
+                  <Scatter
+                    name="Outliers"
+                    data={boxPlotData.outliers}
+                    fill="#FF6B6B"
+                    stroke="#C92A2A"
+                    shape="diamond"
+                  />
+                )}
               </ScatterChart>
             </ResponsiveContainer>
           </div>
           <div className="flex justify-center gap-6 text-xs text-gray-500 mt-2">
             <div className="flex items-center gap-1">
-              <div className="w-3 h-3 rounded-full bg-blue-400 opacity-50"></div>
+              <div className="w-3 h-3 rounded-full bg-blue-400 opacity-30"></div>
               <span>Normal Range ({boxPlotData.nonOutliers.length})</span>
             </div>
-            <div className="flex items-center gap-1">
-              <div className="w-3 h-3 bg-red-400" style={{ transform: 'rotate(45deg)' }}></div>
-              <span>Outliers ({boxPlotData.outliers.length})</span>
-            </div>
+            {boxPlotData.outliers.length > 0 && (
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 bg-red-400" style={{ transform: 'rotate(45deg)' }}></div>
+                <span>Outliers ({boxPlotData.outliers.length})</span>
+              </div>
+            )}
           </div>
         </Card>
       </div>
