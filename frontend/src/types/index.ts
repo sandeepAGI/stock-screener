@@ -65,6 +65,91 @@ export interface StockDetail {
   last_updated: string | null;
 }
 
+// Extended types for Stock Analysis
+export interface NewsArticle {
+  id: number;
+  title: string;
+  summary: string | null;
+  publisher: string | null;
+  publish_date: string | null;
+  url: string | null;
+  sentiment_score: number | null;
+}
+
+export interface RedditPost {
+  id: number;
+  post_id: string;
+  title: string;
+  content: string | null;
+  subreddit: string | null;
+  author: string | null;
+  score: number;
+  upvote_ratio: number | null;
+  num_comments: number;
+  created_utc: string | null;
+  url: string | null;
+  sentiment_score: number | null;
+}
+
+export interface FundamentalsWithPrevious extends StockFundamentals {
+  pe_ratio_prev: number | null;
+  forward_pe_prev: number | null;
+  peg_ratio_prev: number | null;
+  price_to_book_prev: number | null;
+  ev_to_ebitda_prev: number | null;
+  return_on_equity_prev: number | null;
+  return_on_assets_prev: number | null;
+  debt_to_equity_prev: number | null;
+  current_ratio_prev: number | null;
+  revenue_growth_prev: number | null;
+  earnings_growth_prev: number | null;
+}
+
+export interface HistoricalMetric {
+  date: string;
+  pe_ratio: number | null;
+  peg_ratio: number | null;
+  composite_score: number | null;
+}
+
+export interface PeerStock {
+  symbol: string;
+  company_name: string | null;
+  sector: string | null;
+  industry: string | null;
+  composite_score: number | null;
+  fundamental_score: number | null;
+  quality_score: number | null;
+  growth_score: number | null;
+  sentiment_score: number | null;
+}
+
+export interface InvestmentInsight {
+  component: string;
+  score: number;
+  description: string;
+}
+
+export interface InvestmentInsights {
+  strengths: InvestmentInsight[];
+  weaknesses: InvestmentInsight[];
+}
+
+export interface StockExtendedDetail {
+  stock: Stock;
+  scores: StockScores | null;
+  fundamentals: FundamentalsWithPrevious | null;
+  sentiment: StockSentiment | null;
+  recent_prices: PriceData[] | null;
+  news_articles: NewsArticle[];
+  reddit_posts: RedditPost[];
+  historical_metrics: HistoricalMetric[];
+  industry_peers: PeerStock[];
+  sector_peers: PeerStock[];
+  insights: InvestmentInsights | null;
+  last_updated: string | null;
+}
+
 export interface StockListResponse {
   stocks: Stock[];
   total: number;

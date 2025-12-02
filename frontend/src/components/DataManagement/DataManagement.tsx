@@ -6,6 +6,8 @@ import {
   CheckCircle,
   AlertCircle,
   Loader2,
+  Clock,
+  AlertTriangle,
 } from 'lucide-react';
 import { api } from '../../api/client';
 import { Card, CardHeader, MetricCard } from '../common/Card';
@@ -14,10 +16,98 @@ import type { MetricsSummary, DataStatusResponse } from '../../types';
 
 type OperationType = 'data' | 'sentiment' | 'calculate';
 
+// Freshness indicator component
+function FreshnessIndicator({ lastUpdated, thresholds }: {
+  lastUpdated: string | null;
+  thresholds: { fresh: number; stale: number }; // days
+}) {
+  if (!lastUpdated) {
+    return (
+      <span className="inline-flex items-center gap-1 text-gray-400">
+        <Clock className="w-4 h-4" />
+        Never
+      </span>
+    );
+  }
+
+  const daysSince = Math.floor(
+    (Date.now() - new Date(lastUpdated).getTime()) / (1000 * 60 * 60 * 24)
+  );
+
+  if (daysSince <= thresholds.fresh) {
+    return (
+      <span className="inline-flex items-center gap-1 text-green-600">
+        <span className="w-2 h-2 rounded-full bg-green-500" />
+        Fresh ({daysSince}d)
+      </span>
+    );
+  }
+
+  if (daysSince <= thresholds.stale) {
+    return (
+      <span className="inline-flex items-center gap-1 text-yellow-600">
+        <span className="w-2 h-2 rounded-full bg-yellow-500" />
+        Aging ({daysSince}d)
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1 text-red-600">
+      <span className="w-2 h-2 rounded-full bg-red-500" />
+      Stale ({daysSince}d)
+    </span>
+  );
+}
+
+// Data source status card
+function DataSourceCard({
+  name,
+  recordCount,
+  lastUpdated,
+  thresholds,
+  icon,
+}: {
+  name: string;
+  recordCount: number;
+  lastUpdated: string | null;
+  thresholds: { fresh: number; stale: number };
+  icon: React.ReactNode;
+}) {
+  const daysSince = lastUpdated
+    ? Math.floor((Date.now() - new Date(lastUpdated).getTime()) / (1000 * 60 * 60 * 24))
+    : null;
+
+  let statusColor = 'border-gray-200';
+  if (daysSince !== null) {
+    if (daysSince <= thresholds.fresh) statusColor = 'border-l-green-500';
+    else if (daysSince <= thresholds.stale) statusColor = 'border-l-yellow-500';
+    else statusColor = 'border-l-red-500';
+  }
+
+  return (
+    <div className={`bg-white rounded-lg border-l-4 ${statusColor} border border-gray-200 p-4`}>
+      <div className="flex items-start justify-between">
+        <div className="flex items-center gap-3">
+          {icon}
+          <div>
+            <h4 className="font-medium text-gray-900">{name}</h4>
+            <p className="text-sm text-gray-500">{recordCount.toLocaleString()} records</p>
+          </div>
+        </div>
+        <FreshnessIndicator lastUpdated={lastUpdated} thresholds={thresholds} />
+      </div>
+    </div>
+  );
+}
+
 export function DataManagement() {
   const [metrics, setMetrics] = useState<MetricsSummary | null>(null);
   const [dataStatus, setDataStatus] = useState<DataStatusResponse | null>(null);
-  const [pendingSentiment, setPendingSentiment] = useState<{ news_pending: number; reddit_pending: number } | null>(null);
+  const [pendingSentiment, setPendingSentiment] = useState<{
+    news_pending: number;
+    reddit_pending: number;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [operation, setOperation] = useState<OperationType | null>(null);
   const [operationStatus, setOperationStatus] = useState<string>('');
@@ -93,25 +183,61 @@ export function DataManagement() {
     }
   };
 
+  // Helper to get table info
+  const getTableInfo = (tableName: string) => {
+    const table = metrics?.tables?.find((t) => t.name === tableName);
+    return {
+      count: table?.record_count || 0,
+      lastUpdated: table?.last_updated || null,
+    };
+  };
+
   if (loading) {
     return <Loading message="Loading data status..." />;
   }
 
+  const fundamentals = getTableInfo('fundamental_data');
+  const prices = getTableInfo('price_data');
+  const news = getTableInfo('news_articles');
+  const reddit = getTableInfo('reddit_posts');
+  const calculated = getTableInfo('calculated_metrics');
+
+  // Check if any data source is stale
+  const hasStaleData = metrics?.tables?.some((table) => {
+    if (!table.last_updated) return true;
+    const daysSince = Math.floor(
+      (Date.now() - new Date(table.last_updated).getTime()) / (1000 * 60 * 60 * 24)
+    );
+    return daysSince > 7; // More than 7 days
+  });
+
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Data Management</h1>
-        <p className="text-gray-500">Manage data collection, sentiment processing, and calculations</p>
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Data Management</h1>
+          <p className="text-gray-500">
+            Manage data collection, sentiment processing, and calculations
+          </p>
+        </div>
+        {hasStaleData && (
+          <div className="flex items-center gap-2 px-3 py-1 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-700 text-sm">
+            <AlertTriangle className="w-4 h-4" />
+            Some data sources need refresh
+          </div>
+        )}
       </div>
 
       {/* Status Banner */}
       {operationStatus && (
-        <div className={`p-4 rounded-lg flex items-center gap-3 ${
-          operationStatus.includes('Error')
-            ? 'bg-red-50 text-red-700'
-            : 'bg-blue-50 text-blue-700'
-        }`}>
+        <div
+          className={`p-4 rounded-lg flex items-center gap-3 ${
+            operationStatus.includes('Error')
+              ? 'bg-red-50 text-red-700'
+              : 'bg-blue-50 text-blue-700'
+          }`}
+        >
           {operation ? (
             <Loader2 className="w-5 h-5 animate-spin" />
           ) : operationStatus.includes('Error') ? (
@@ -122,6 +248,64 @@ export function DataManagement() {
           <span>{operationStatus}</span>
         </div>
       )}
+
+      {/* Data Source Freshness */}
+      <Card>
+        <CardHeader
+          title="Data Source Status"
+          subtitle="Freshness indicators for each data type"
+          action={
+            <div className="flex items-center gap-4 text-xs text-gray-500">
+              <span className="flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-green-500" /> Fresh
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-yellow-500" /> Aging
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-red-500" /> Stale
+              </span>
+            </div>
+          }
+        />
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <DataSourceCard
+            name="Fundamentals"
+            recordCount={fundamentals.count}
+            lastUpdated={fundamentals.lastUpdated}
+            thresholds={{ fresh: 1, stale: 7 }}
+            icon={<div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center text-blue-600 text-lg font-bold">F</div>}
+          />
+          <DataSourceCard
+            name="Price Data"
+            recordCount={prices.count}
+            lastUpdated={prices.lastUpdated}
+            thresholds={{ fresh: 1, stale: 3 }}
+            icon={<div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center text-green-600 text-lg font-bold">$</div>}
+          />
+          <DataSourceCard
+            name="News Articles"
+            recordCount={news.count}
+            lastUpdated={news.lastUpdated}
+            thresholds={{ fresh: 3, stale: 14 }}
+            icon={<div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center text-purple-600 text-lg font-bold">N</div>}
+          />
+          <DataSourceCard
+            name="Reddit Posts"
+            recordCount={reddit.count}
+            lastUpdated={reddit.lastUpdated}
+            thresholds={{ fresh: 3, stale: 14 }}
+            icon={<div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center text-orange-600 text-lg font-bold">R</div>}
+          />
+          <DataSourceCard
+            name="Calculated Metrics"
+            recordCount={calculated.count}
+            lastUpdated={calculated.lastUpdated}
+            thresholds={{ fresh: 1, stale: 7 }}
+            icon={<div className="w-10 h-10 bg-emerald-100 rounded-lg flex items-center justify-center text-emerald-600 text-lg font-bold">C</div>}
+          />
+        </div>
+      </Card>
 
       {/* Quick Stats */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -136,12 +320,20 @@ export function DataManagement() {
         />
         <MetricCard
           label="Pending Sentiment"
-          value={(pendingSentiment?.news_pending || 0) + (pendingSentiment?.reddit_pending || 0)}
-          subvalue={`${pendingSentiment?.news_pending || 0} news, ${pendingSentiment?.reddit_pending || 0} reddit`}
+          value={
+            (pendingSentiment?.news_pending || 0) + (pendingSentiment?.reddit_pending || 0)
+          }
+          subvalue={`${pendingSentiment?.news_pending || 0} news, ${
+            pendingSentiment?.reddit_pending || 0
+          } reddit`}
         />
         <MetricCard
           label="Last Calculation"
-          value={metrics?.last_calculation ? new Date(metrics.last_calculation).toLocaleDateString() : 'Never'}
+          value={
+            metrics?.last_calculation
+              ? new Date(metrics.last_calculation).toLocaleDateString()
+              : 'Never'
+          }
         />
       </div>
 
@@ -187,7 +379,8 @@ export function DataManagement() {
             </div>
           </div>
           <p className="text-sm text-gray-600 mb-4">
-            Collect latest data from Yahoo Finance, news sources, and Reddit for all active stocks.
+            Collect latest data from Yahoo Finance, news sources, and Reddit for all active
+            stocks.
           </p>
           <div className="space-y-2">
             <button
@@ -218,7 +411,9 @@ export function DataManagement() {
             </div>
           </div>
           <p className="text-sm text-gray-600 mb-4">
-            Use AI to analyze sentiment for {(pendingSentiment?.news_pending || 0) + (pendingSentiment?.reddit_pending || 0)} pending items.
+            Use AI to analyze sentiment for{' '}
+            {(pendingSentiment?.news_pending || 0) + (pendingSentiment?.reddit_pending || 0)}{' '}
+            pending items.
           </p>
           <button
             onClick={handleProcessSentiment}
@@ -260,9 +455,18 @@ export function DataManagement() {
           <table className="w-full">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Table</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Records</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Last Updated</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  Table
+                </th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">
+                  Records
+                </th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">
+                  Last Updated
+                </th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">
+                  Status
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
@@ -278,6 +482,12 @@ export function DataManagement() {
                     {table.last_updated
                       ? new Date(table.last_updated).toLocaleDateString()
                       : '-'}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <FreshnessIndicator
+                      lastUpdated={table.last_updated}
+                      thresholds={{ fresh: 3, stale: 14 }}
+                    />
                   </td>
                 </tr>
               ))}

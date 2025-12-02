@@ -5,6 +5,7 @@
 import type {
   StockListResponse,
   StockDetail,
+  StockExtendedDetail,
   RankingsResponse,
   SectorInfo,
   DataRefreshRequest,
@@ -72,6 +73,10 @@ class ApiClient {
 
   async getStock(symbol: string): Promise<StockDetail> {
     return this.fetch(`/api/stocks/${symbol.toUpperCase()}`);
+  }
+
+  async getStockExtended(symbol: string): Promise<StockExtendedDetail> {
+    return this.fetch(`/api/stocks/${symbol.toUpperCase()}/extended`);
   }
 
   async getSectors(): Promise<{ sectors: SectorInfo[] }> {

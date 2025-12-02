@@ -63,6 +63,106 @@ class StockSentiment(BaseModel):
     combined_sentiment: Optional[float] = None
 
 
+# Extended Data Models
+class NewsArticle(BaseModel):
+    id: int
+    title: str
+    summary: Optional[str] = None
+    publisher: Optional[str] = None
+    publish_date: Optional[datetime] = None
+    url: Optional[str] = None
+    sentiment_score: Optional[float] = None
+
+
+class RedditPost(BaseModel):
+    id: int
+    post_id: str
+    title: str
+    content: Optional[str] = None
+    subreddit: Optional[str] = None
+    author: Optional[str] = None
+    score: int = 0
+    upvote_ratio: Optional[float] = None
+    num_comments: int = 0
+    created_utc: Optional[datetime] = None
+    url: Optional[str] = None
+    sentiment_score: Optional[float] = None
+
+
+class FundamentalsWithPrevious(BaseModel):
+    """Fundamentals with current and previous values for comparison"""
+    pe_ratio: Optional[float] = None
+    pe_ratio_prev: Optional[float] = None
+    forward_pe: Optional[float] = None
+    forward_pe_prev: Optional[float] = None
+    peg_ratio: Optional[float] = None
+    peg_ratio_prev: Optional[float] = None
+    price_to_book: Optional[float] = None
+    price_to_book_prev: Optional[float] = None
+    ev_to_ebitda: Optional[float] = None
+    ev_to_ebitda_prev: Optional[float] = None
+    return_on_equity: Optional[float] = None
+    return_on_equity_prev: Optional[float] = None
+    return_on_assets: Optional[float] = None
+    return_on_assets_prev: Optional[float] = None
+    debt_to_equity: Optional[float] = None
+    debt_to_equity_prev: Optional[float] = None
+    current_ratio: Optional[float] = None
+    current_ratio_prev: Optional[float] = None
+    revenue_growth: Optional[float] = None
+    revenue_growth_prev: Optional[float] = None
+    earnings_growth: Optional[float] = None
+    earnings_growth_prev: Optional[float] = None
+    current_price: Optional[float] = None
+    week_52_high: Optional[float] = None
+    week_52_low: Optional[float] = None
+    dividend_yield: Optional[float] = None
+    beta: Optional[float] = None
+
+
+class HistoricalMetric(BaseModel):
+    """Historical metric data point"""
+    date: date
+    pe_ratio: Optional[float] = None
+    peg_ratio: Optional[float] = None
+    composite_score: Optional[float] = None
+
+
+class PeerStock(BaseModel):
+    """Peer stock for comparison"""
+    symbol: str
+    company_name: Optional[str] = None
+    sector: Optional[str] = None
+    industry: Optional[str] = None
+    composite_score: Optional[float] = None
+    fundamental_score: Optional[float] = None
+    quality_score: Optional[float] = None
+    growth_score: Optional[float] = None
+    sentiment_score: Optional[float] = None
+
+
+class InvestmentInsights(BaseModel):
+    """Investment insights - strengths and areas for attention"""
+    strengths: List[Dict[str, Any]] = []
+    weaknesses: List[Dict[str, Any]] = []
+
+
+class StockExtendedDetail(BaseModel):
+    """Extended stock detail with all data for Stock Analysis page"""
+    stock: StockBase
+    scores: Optional[StockScores] = None
+    fundamentals: Optional[FundamentalsWithPrevious] = None
+    sentiment: Optional[StockSentiment] = None
+    recent_prices: Optional[List["PriceData"]] = None
+    news_articles: List[NewsArticle] = []
+    reddit_posts: List[RedditPost] = []
+    historical_metrics: List[HistoricalMetric] = []
+    industry_peers: List[PeerStock] = []
+    sector_peers: List[PeerStock] = []
+    insights: Optional[InvestmentInsights] = None
+    last_updated: Optional[datetime] = None
+
+
 class PriceData(BaseModel):
     date: date
     open: float

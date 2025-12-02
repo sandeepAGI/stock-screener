@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '../api/client';
-import type { Stock, StockDetail, SectorInfo } from '../types';
+import type { Stock, StockDetail, StockExtendedDetail, SectorInfo } from '../types';
 
 export function useStocks(sector?: string) {
   const [stocks, setStocks] = useState<Stock[]>([]);
@@ -44,6 +44,36 @@ export function useStock(symbol: string | null) {
     setError(null);
     try {
       const response = await api.getStock(symbol);
+      setStock(response);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch stock');
+    } finally {
+      setLoading(false);
+    }
+  }, [symbol]);
+
+  useEffect(() => {
+    fetchStock();
+  }, [fetchStock]);
+
+  return { stock, loading, error, refetch: fetchStock };
+}
+
+export function useStockExtended(symbol: string | null) {
+  const [stock, setStock] = useState<StockExtendedDetail | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchStock = useCallback(async () => {
+    if (!symbol) {
+      setStock(null);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await api.getStockExtended(symbol);
       setStock(response);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch stock');
