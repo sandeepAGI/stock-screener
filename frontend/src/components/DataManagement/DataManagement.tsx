@@ -229,26 +229,6 @@ export function DataManagement() {
         )}
       </div>
 
-      {/* Status Banner */}
-      {operationStatus && (
-        <div
-          className={`p-4 rounded-lg flex items-center gap-3 ${
-            operationStatus.includes('Error')
-              ? 'bg-red-50 text-red-700'
-              : 'bg-blue-50 text-blue-700'
-          }`}
-        >
-          {operation ? (
-            <Loader2 className="w-5 h-5 animate-spin" />
-          ) : operationStatus.includes('Error') ? (
-            <AlertCircle className="w-5 h-5" />
-          ) : (
-            <CheckCircle className="w-5 h-5" />
-          )}
-          <span>{operationStatus}</span>
-        </div>
-      )}
-
       {/* Data Source Freshness */}
       <Card>
         <CardHeader
@@ -447,6 +427,26 @@ export function DataManagement() {
           </button>
         </Card>
       </div>
+
+      {/* Status Banner - shown below action buttons */}
+      {operationStatus && (
+        <div
+          className={`p-4 rounded-lg flex items-center gap-3 ${
+            operationStatus.includes('Error')
+              ? 'bg-red-50 text-red-700'
+              : 'bg-blue-50 text-blue-700'
+          }`}
+        >
+          {operation ? (
+            <Loader2 className="w-5 h-5 animate-spin" />
+          ) : operationStatus.includes('Error') ? (
+            <AlertCircle className="w-5 h-5" />
+          ) : (
+            <CheckCircle className="w-5 h-5" />
+          )}
+          <span>{operationStatus}</span>
+        </div>
+      )}
 
       {/* Tables Overview */}
       <Card>
