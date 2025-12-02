@@ -236,7 +236,7 @@ export function Dashboard() {
     const nonOutliers = rankedStocks.filter(
       (r) => r.customScore >= lowerFence && r.customScore <= upperFence
     ).map((r) => ({
-      x: 0.15 + Math.random() * 0.2, // Jitter to the left of the box
+      x: 0.25, // All points in a vertical line, like Streamlit
       y: r.customScore,
       symbol: r.symbol,
       company: r.company_name,
@@ -523,16 +523,20 @@ export function Dashboard() {
           />
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <ScatterChart margin={{ top: 20, right: 20, left: 20, bottom: 20 }}>
+              <ScatterChart margin={{ top: 20, right: 20, left: 50, bottom: 20 }}>
                 <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} />
                 <XAxis type="number" dataKey="x" domain={[0, 1]} hide />
                 <YAxis
                   type="number"
                   dataKey="y"
-                  domain={[boxPlotData.min - 2, boxPlotData.max + 2]}
-                  label={{ value: 'Composite Score', angle: -90, position: 'insideLeft' }}
+                  domain={[
+                    Math.floor((boxPlotData.min || 30) / 10) * 10,
+                    Math.ceil((boxPlotData.max || 90) / 10) * 10
+                  ]}
+                  tickFormatter={(value) => value.toFixed(0)}
+                  label={{ value: 'Composite Score', angle: -90, position: 'insideLeft', offset: -10 }}
                 />
-                <ZAxis range={[25, 25]} />
+                <ZAxis range={[20, 20]} />
                 <Tooltip
                   content={({ active, payload }) => {
                     if (active && payload && payload.length) {
