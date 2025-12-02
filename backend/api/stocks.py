@@ -137,7 +137,7 @@ async def get_stock(symbol: str):
         cursor.execute("""
             SELECT fundamental_score, quality_score, growth_score, sentiment_score,
                    composite_score, sector_percentile, data_quality_lower, data_quality_upper,
-                   methodology_version, created_at
+                   methodology_version, created_at, market_percentile, outlier_category
             FROM calculated_metrics
             WHERE symbol = ?
             ORDER BY calculation_date DESC
@@ -149,24 +149,9 @@ async def get_stock(symbol: str):
         last_updated = None
 
         if scores_row:
-            # Get outlier category based on market percentile
-            cursor.execute("""
-                SELECT market_percentile FROM calculated_metrics
-                WHERE symbol = ? ORDER BY calculation_date DESC LIMIT 1
-            """, (symbol.upper(),))
-            pct_row = cursor.fetchone()
-            market_pct = pct_row[0] if pct_row and pct_row[0] else 50
-
-            if market_pct <= 20:
-                outlier_cat = "strong_undervalued"
-            elif market_pct <= 35:
-                outlier_cat = "undervalued"
-            elif market_pct <= 65:
-                outlier_cat = "fairly_valued"
-            elif market_pct <= 80:
-                outlier_cat = "overvalued"
-            else:
-                outlier_cat = "strong_overvalued"
+            # Use stored values from database
+            market_pct = scores_row[10] if scores_row[10] else 50
+            outlier_cat = scores_row[11] if scores_row[11] else "fairly_valued"
 
             scores = StockScores(
                 fundamental_score=scores_row[0],
@@ -276,7 +261,8 @@ async def get_stock_extended(symbol: str):
         # Get scores
         cursor.execute("""
             SELECT fundamental_score, quality_score, growth_score, sentiment_score,
-                   composite_score, sector_percentile, market_percentile, created_at
+                   composite_score, sector_percentile, market_percentile, created_at,
+                   outlier_category
             FROM calculated_metrics
             WHERE symbol = ?
             ORDER BY calculation_date DESC
@@ -288,17 +274,9 @@ async def get_stock_extended(symbol: str):
         last_updated = None
 
         if scores_row:
+            # Use stored values from database
             market_pct = scores_row[6] if scores_row[6] else 50
-            if market_pct <= 20:
-                outlier_cat = "strong_undervalued"
-            elif market_pct <= 35:
-                outlier_cat = "undervalued"
-            elif market_pct <= 65:
-                outlier_cat = "fairly_valued"
-            elif market_pct <= 80:
-                outlier_cat = "overvalued"
-            else:
-                outlier_cat = "strong_overvalued"
+            outlier_cat = scores_row[8] if scores_row[8] else "fairly_valued"
 
             scores = StockScores(
                 fundamental_score=scores_row[0],
