@@ -6,8 +6,13 @@ import {
   TrendingUp,
   RotateCcw,
   Sliders,
+  Loader2,
+  RefreshCw,
+  Brain,
+  Calculator,
 } from 'lucide-react';
 import { useWeightsContext } from '../../context/WeightsContext';
+import { useOperationContext } from '../../context/OperationContext';
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
@@ -44,6 +49,56 @@ function WeightSlider({ label, value, onChange, color }: SliderProps) {
   );
 }
 
+// Operation status indicator component
+function OperationStatusIndicator() {
+  const { operation } = useOperationContext();
+
+  if (!operation.isActive) return null;
+
+  const getOperationIcon = () => {
+    switch (operation.type) {
+      case 'data':
+        return <RefreshCw className="w-4 h-4 animate-spin" />;
+      case 'sentiment':
+        return <Brain className="w-4 h-4" />;
+      case 'calculate':
+        return <Calculator className="w-4 h-4" />;
+      default:
+        return <Loader2 className="w-4 h-4 animate-spin" />;
+    }
+  };
+
+  const getOperationColor = () => {
+    switch (operation.type) {
+      case 'data':
+        return 'bg-blue-600';
+      case 'sentiment':
+        return 'bg-purple-600';
+      case 'calculate':
+        return 'bg-green-600';
+      default:
+        return 'bg-slate-600';
+    }
+  };
+
+  return (
+    <div className={`mx-4 mb-2 p-3 rounded-lg ${getOperationColor()}`}>
+      <div className="flex items-center gap-2">
+        {getOperationIcon()}
+        <span className="text-xs font-medium truncate">{operation.status}</span>
+      </div>
+      {operation.progress !== undefined && operation.progress > 0 && (
+        <div className="mt-2 w-full bg-white/20 rounded-full h-1.5">
+          <div
+            className="bg-white h-1.5 rounded-full transition-all"
+            style={{ width: `${operation.progress}%` }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Sidebar() {
   const { weights, normalizedWeights, setWeight, resetWeights, isDefault } = useWeightsContext();
 
@@ -61,6 +116,9 @@ export function Sidebar() {
           </div>
         </div>
       </div>
+
+      {/* Global Operation Status */}
+      <OperationStatusIndicator />
 
       {/* Navigation */}
       <nav className="flex-1 p-4 overflow-y-auto">

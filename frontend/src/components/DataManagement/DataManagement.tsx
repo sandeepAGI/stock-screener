@@ -16,6 +16,8 @@ import type { MetricsSummary, DataStatusResponse } from '../../types';
 
 type OperationType = 'data' | 'sentiment' | 'calculate';
 
+type DataType = 'fundamentals' | 'prices' | 'news' | 'reddit';
+
 // Freshness indicator component
 function FreshnessIndicator({ lastUpdated, thresholds }: {
   lastUpdated: string | null;
@@ -111,6 +113,12 @@ export function DataManagement() {
   const [loading, setLoading] = useState(true);
   const [operation, setOperation] = useState<OperationType | null>(null);
   const [operationStatus, setOperationStatus] = useState<string>('');
+  const [selectedDataTypes, setSelectedDataTypes] = useState<DataType[]>([
+    'fundamentals',
+    'prices',
+    'news',
+    'reddit',
+  ]);
 
   const fetchStatus = async () => {
     try {
@@ -135,12 +143,22 @@ export function DataManagement() {
     return () => clearInterval(interval);
   }, []);
 
+  const toggleDataType = (type: DataType) => {
+    setSelectedDataTypes((prev) =>
+      prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]
+    );
+  };
+
   const handleRefreshData = async () => {
+    if (selectedDataTypes.length === 0) {
+      setOperationStatus('Please select at least one data type to refresh');
+      return;
+    }
     setOperation('data');
-    setOperationStatus('Starting data refresh...');
+    setOperationStatus(`Starting refresh for: ${selectedDataTypes.join(', ')}...`);
     try {
       const response = await api.refreshData({
-        data_types: ['fundamentals', 'prices', 'news', 'reddit'],
+        data_types: selectedDataTypes,
         force: false,
       });
       setOperationStatus(response.message);
@@ -154,9 +172,17 @@ export function DataManagement() {
     setOperationStatus('Submitting sentiment batch...');
     try {
       const response = await api.submitSentiment();
-      setOperationStatus(`Batch submitted: ${response.total_items || 0} items`);
+      if (response.status === 'no_items' || response.total_items === 0) {
+        setOperationStatus('All items already have sentiment scores - nothing to process');
+      } else if (response.status === 'already_processing') {
+        setOperationStatus(`Batch already in progress: ${response.total_items || 0} items`);
+      } else {
+        setOperationStatus(`Batch submitted: ${response.total_items || 0} items`);
+      }
     } catch (error) {
       setOperationStatus(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setOperation(null);
     }
   };
 
@@ -358,17 +384,43 @@ export function DataManagement() {
               <p className="text-sm text-gray-500">Update fundamentals, prices, news</p>
             </div>
           </div>
-          <p className="text-sm text-gray-600 mb-4">
-            Collect latest data from Yahoo Finance, news sources, and Reddit for all active
-            stocks.
-          </p>
+
+          {/* Data Type Selection */}
+          <div className="mb-4">
+            <p className="text-xs text-gray-500 mb-2">Select data types to refresh:</p>
+            <div className="grid grid-cols-2 gap-2">
+              {(['fundamentals', 'prices', 'news', 'reddit'] as DataType[]).map((type) => (
+                <label
+                  key={type}
+                  className={`flex items-center gap-2 p-2 rounded border cursor-pointer transition-colors ${
+                    selectedDataTypes.includes(type)
+                      ? 'bg-blue-50 border-blue-300'
+                      : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedDataTypes.includes(type)}
+                    onChange={() => toggleDataType(type)}
+                    className="rounded text-blue-600"
+                  />
+                  <span className="text-sm capitalize">{type}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
           <div className="space-y-2">
             <button
               onClick={handleRefreshData}
-              disabled={dataStatus?.is_collecting}
+              disabled={dataStatus?.is_collecting || selectedDataTypes.length === 0}
               className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              {dataStatus?.is_collecting ? 'Refreshing...' : 'Refresh All Data'}
+              {dataStatus?.is_collecting
+                ? 'Refreshing...'
+                : selectedDataTypes.length === 4
+                ? 'Refresh All Data'
+                : `Refresh Selected (${selectedDataTypes.length})`}
             </button>
             <button
               onClick={handleSyncSP500}

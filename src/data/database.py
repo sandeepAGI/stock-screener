@@ -240,12 +240,18 @@ class DatabaseManager:
             columns = cursor.fetchall()
             table_stats["columns"] = [{"name": col[1], "type": col[2]} for col in columns]
             
-            # Try to get last updated time if updated_at column exists
+            # Try to get last updated time - check for created_at or updated_at columns
             column_names = [col["name"] for col in table_stats["columns"]]
-            if "updated_at" in column_names:
+            timestamp_col = None
+            if "created_at" in column_names:
+                timestamp_col = "created_at"
+            elif "updated_at" in column_names:
+                timestamp_col = "updated_at"
+
+            if timestamp_col:
                 cursor.execute(f"""
-                    SELECT MAX(updated_at) FROM {table_name}
-                    WHERE updated_at IS NOT NULL
+                    SELECT MAX({timestamp_col}) FROM {table_name}
+                    WHERE {timestamp_col} IS NOT NULL
                 """)
                 last_update = cursor.fetchone()[0]
                 if last_update:
