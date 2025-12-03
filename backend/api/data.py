@@ -48,25 +48,25 @@ async def _run_data_refresh(symbols: List[str], data_types: List[str], job_id: s
     _refresh_status["errors"] = []
 
     try:
-        # Import collectors
-        from src.data.collectors import DataCollector
+        # Import the correct collector class
+        from src.data.collectors import DataCollectionOrchestrator
 
-        collector = DataCollector()
+        orchestrator = DataCollectionOrchestrator()
 
         for i, symbol in enumerate(symbols):
             _refresh_status["current_symbol"] = symbol
             _refresh_status["progress"] = (i / len(symbols)) * 100
 
             try:
-                # Collect based on data types requested
+                # Collect based on data types requested using orchestrator methods
                 if "fundamentals" in data_types:
-                    collector.collect_fundamentals(symbol)
+                    orchestrator.refresh_fundamentals_only([symbol])
                 if "prices" in data_types:
-                    collector.collect_price_history(symbol)
+                    orchestrator.refresh_prices_only([symbol])
                 if "news" in data_types:
-                    collector.collect_news(symbol)
+                    orchestrator.refresh_news_only([symbol])
                 if "reddit" in data_types:
-                    collector.collect_reddit_posts(symbol)
+                    orchestrator.refresh_sentiment_only([symbol])
 
                 _refresh_status["completed"] += 1
 
@@ -77,6 +77,10 @@ async def _run_data_refresh(symbols: List[str], data_types: List[str], job_id: s
             await asyncio.sleep(0.5)
 
         _refresh_status["last_collection"] = datetime.now()
+
+    except Exception as e:
+        # Capture any initialization errors
+        _refresh_status["errors"].append(f"Initialization error: {str(e)}")
 
     finally:
         _refresh_status["is_collecting"] = False
