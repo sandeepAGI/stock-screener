@@ -10,6 +10,7 @@ interface OperationState {
   isActive: boolean;
   progress?: number;
   currentSymbol?: string;
+  completedAt?: number; // Timestamp when operation completed
 }
 
 interface OperationContextType {
@@ -49,9 +50,12 @@ export function OperationProvider({ children }: { children: ReactNode }) {
       // Check data refresh status
       const dataStatus = await api.getDataStatus();
       if (dataStatus.is_collecting) {
+        const statusText = dataStatus.current_symbol
+          ? `${dataStatus.current_symbol} (${dataStatus.completed}/${dataStatus.total})`
+          : 'Starting...';
         setOperationState({
           type: 'data',
-          status: `Refreshing data: ${dataStatus.current_symbol || 'Starting...'}`,
+          status: `Refreshing: ${statusText}`,
           isActive: true,
           progress: dataStatus.progress,
           currentSymbol: dataStatus.current_symbol || undefined,
@@ -88,19 +92,27 @@ export function OperationProvider({ children }: { children: ReactNode }) {
         // Calculation status endpoint might not exist, ignore
       }
 
-      // Nothing active - clear if we were showing something
+      // Nothing active - mark as completed if we were showing something
       if (operation.isActive) {
-        // Keep the last status for a moment to show completion
         setOperationState(prev => ({
           ...prev,
           isActive: false,
           status: prev.status.includes('Error') ? prev.status : 'Completed',
+          completedAt: Date.now(),
         }));
+      }
+      // Clear completed status after 10 seconds
+      else if (operation.completedAt && Date.now() - operation.completedAt > 10000) {
+        setOperationState({
+          type: null,
+          status: '',
+          isActive: false,
+        });
       }
     } catch (error) {
       console.error('Error refreshing operation status:', error);
     }
-  }, [operation.isActive]);
+  }, [operation.isActive, operation.completedAt]);
 
   // Poll for status updates
   useEffect(() => {

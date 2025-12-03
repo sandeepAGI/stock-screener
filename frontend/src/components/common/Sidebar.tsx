@@ -10,6 +10,7 @@ import {
   RefreshCw,
   Brain,
   Calculator,
+  CheckCircle,
 } from 'lucide-react';
 import { useWeightsContext } from '../../context/WeightsContext';
 import { useOperationContext } from '../../context/OperationContext';
@@ -53,9 +54,17 @@ function WeightSlider({ label, value, onChange, color }: SliderProps) {
 function OperationStatusIndicator() {
   const { operation } = useOperationContext();
 
-  if (!operation.isActive) return null;
+  // Show indicator if active OR if recently completed (within 10 seconds)
+  const showIndicator = operation.isActive ||
+    (operation.completedAt && Date.now() - operation.completedAt < 10000);
+
+  if (!showIndicator) return null;
 
   const getOperationIcon = () => {
+    // Show checkmark when completed
+    if (!operation.isActive && operation.completedAt) {
+      return <CheckCircle className="w-4 h-4" />;
+    }
     switch (operation.type) {
       case 'data':
         return <RefreshCw className="w-4 h-4 animate-spin" />;
@@ -69,6 +78,14 @@ function OperationStatusIndicator() {
   };
 
   const getOperationColor = () => {
+    // Show green when completed successfully
+    if (!operation.isActive && operation.completedAt && !operation.status.includes('Error')) {
+      return 'bg-green-600';
+    }
+    // Show red for errors
+    if (operation.status.includes('Error')) {
+      return 'bg-red-600';
+    }
     switch (operation.type) {
       case 'data':
         return 'bg-blue-600';
@@ -83,9 +100,16 @@ function OperationStatusIndicator() {
 
   return (
     <div className={`mx-4 mb-2 p-3 rounded-lg ${getOperationColor()}`}>
-      <div className="flex items-center gap-2">
-        {getOperationIcon()}
-        <span className="text-xs font-medium truncate">{operation.status}</span>
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          {getOperationIcon()}
+          <span className="text-xs font-medium truncate">{operation.status}</span>
+        </div>
+        {operation.progress !== undefined && operation.progress > 0 && (
+          <span className="text-xs font-bold whitespace-nowrap">
+            {Math.round(operation.progress)}%
+          </span>
+        )}
       </div>
       {operation.progress !== undefined && operation.progress > 0 && (
         <div className="mt-2 w-full bg-white/20 rounded-full h-1.5">

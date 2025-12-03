@@ -280,14 +280,16 @@ export function DataManagement() {
   const reddit = getTableInfo('reddit_posts');
   const calculated = getTableInfo('calculated_metrics');
 
-  // Check if any data source is stale
-  const hasStaleData = metrics?.tables?.some((table) => {
+  // Check which data sources are stale (more than 7 days old)
+  const staleTables = metrics?.tables?.filter((table) => {
     if (!table.last_updated) return true;
     const daysSince = Math.floor(
       (Date.now() - new Date(table.last_updated).getTime()) / (1000 * 60 * 60 * 24)
     );
     return daysSince > 7; // More than 7 days
-  });
+  }) || [];
+
+  const hasStaleData = staleTables.length > 0;
 
   return (
     <div className="p-6 space-y-6">
@@ -300,9 +302,13 @@ export function DataManagement() {
           </p>
         </div>
         {hasStaleData && (
-          <div className="flex items-center gap-2 px-3 py-1 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-700 text-sm">
-            <AlertTriangle className="w-4 h-4" />
-            Some data sources need refresh
+          <div className="flex items-center gap-2 px-3 py-1 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-700 text-sm" title={staleTables.map(t => t.name.replace(/_/g, ' ')).join(', ')}>
+            <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+            <span>
+              {staleTables.length === 1
+                ? `${staleTables[0].name.replace(/_/g, ' ')} needs refresh`
+                : `${staleTables.length} data sources need refresh`}
+            </span>
           </div>
         )}
       </div>
