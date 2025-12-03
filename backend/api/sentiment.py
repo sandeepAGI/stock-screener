@@ -254,3 +254,86 @@ async def list_batches():
 
     finally:
         db.close()
+
+
+@router.post("/poll/{batch_id}")
+async def poll_batch_status(batch_id: str):
+    """
+    Poll Anthropic API for batch status and auto-retrieve results if complete.
+    This is similar to the batch_monitor.py functionality but exposed via API.
+    """
+    global _sentiment_status
+
+    try:
+        from src.data.unified_bulk_processor import UnifiedBulkProcessor
+
+        processor = UnifiedBulkProcessor()
+
+        # Check status from Anthropic API
+        status_result = processor.check_batch_status(batch_id)
+
+        if not status_result or not status_result.get('success'):
+            return {
+                "success": False,
+                "error": status_result.get('error', 'Failed to check batch status'),
+                "batch_id": batch_id,
+                "anthropic_status": None,
+            }
+
+        anthropic_status = status_result.get('status')
+        submitted_count = status_result.get('submitted_count', 0)
+        completed_count = status_result.get('completed_count', 0)
+        failed_count = status_result.get('failed_count', 0)
+
+        response = {
+            "success": True,
+            "batch_id": batch_id,
+            "anthropic_status": anthropic_status,
+            "submitted_count": submitted_count,
+            "completed_count": completed_count,
+            "failed_count": failed_count,
+            "results_retrieved": False,
+        }
+
+        # If batch is complete (ended), auto-retrieve results
+        if anthropic_status == 'ended':
+            retrieve_result = processor.retrieve_and_process_batch_results(batch_id)
+
+            if retrieve_result and retrieve_result.get('success'):
+                response["results_retrieved"] = True
+                response["successful_updates"] = retrieve_result.get('successful_updates', 0)
+                response["failed_updates"] = retrieve_result.get('failed_updates', 0)
+                response["message"] = f"Results retrieved: {retrieve_result.get('successful_updates', 0)} successful, {retrieve_result.get('failed_updates', 0)} failed"
+
+                # Update global status
+                _sentiment_status.update({
+                    "batch_id": batch_id,
+                    "status": "completed",
+                    "completed_items": retrieve_result.get('successful_updates', 0),
+                    "failed_items": retrieve_result.get('failed_updates', 0),
+                    "progress": 100.0,
+                    "completed_at": datetime.now(),
+                })
+            else:
+                response["results_retrieved"] = False
+                response["error"] = retrieve_result.get('error', 'Failed to retrieve results') if retrieve_result else 'No result returned'
+
+        elif anthropic_status == 'in_progress':
+            response["message"] = f"Batch still processing ({completed_count}/{submitted_count})"
+
+        elif anthropic_status == 'processing':
+            response["message"] = "Batch is being processed by Anthropic"
+
+        else:
+            response["message"] = f"Batch status: {anthropic_status}"
+
+        return response
+
+    except Exception as e:
+        import traceback
+        return {
+            "success": False,
+            "error": str(e),
+            "traceback": traceback.format_exc(),
+            "batch_id": batch_id,
+        }

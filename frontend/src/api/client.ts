@@ -184,6 +184,16 @@ class ApiClient {
     return this.fetch('/api/sentiment/pending');
   }
 
+  async getSentimentBatches(): Promise<any> {
+    return this.fetch('/api/sentiment/batches');
+  }
+
+  async pollBatchStatus(batchId: string): Promise<any> {
+    return this.fetch(`/api/sentiment/poll/${batchId}`, {
+      method: 'POST',
+    });
+  }
+
   // Calculations
   async runCalculations(symbols?: string[]): Promise<any> {
     return this.fetch('/api/calculate', {

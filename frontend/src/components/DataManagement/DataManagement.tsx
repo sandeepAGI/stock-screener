@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   RefreshCw,
   Brain,
@@ -8,6 +8,7 @@ import {
   Loader2,
   Clock,
   AlertTriangle,
+  Search,
 } from 'lucide-react';
 import { api } from '../../api/client';
 import { Card, CardHeader, MetricCard } from '../common/Card';
@@ -17,6 +18,14 @@ import type { MetricsSummary, DataStatusResponse } from '../../types';
 type OperationType = 'data' | 'sentiment' | 'calculate';
 
 type DataType = 'fundamentals' | 'prices' | 'news' | 'reddit';
+
+interface BatchInfo {
+  batch_id: string;
+  pending_count: number;
+  completed_count: number;
+  failed_count: number;
+  created_at?: string;
+}
 
 // Freshness indicator component
 function FreshnessIndicator({ lastUpdated, thresholds }: {
@@ -119,6 +128,23 @@ export function DataManagement() {
     'news',
     'reddit',
   ]);
+  const [activeBatches, setActiveBatches] = useState<BatchInfo[]>([]);
+  const [pollingBatch, setPollingBatch] = useState<string | null>(null);
+  const [pollResult, setPollResult] = useState<{
+    success: boolean;
+    message?: string;
+    anthropic_status?: string;
+    results_retrieved?: boolean;
+  } | null>(null);
+
+  const fetchBatches = useCallback(async () => {
+    try {
+      const response = await api.getSentimentBatches();
+      setActiveBatches(response.batches || []);
+    } catch (error) {
+      console.error('Failed to fetch batches:', error);
+    }
+  }, []);
 
   const fetchStatus = async () => {
     try {
@@ -139,9 +165,13 @@ export function DataManagement() {
 
   useEffect(() => {
     fetchStatus();
-    const interval = setInterval(fetchStatus, 5000); // Poll every 5 seconds
+    fetchBatches();
+    const interval = setInterval(() => {
+      fetchStatus();
+      fetchBatches();
+    }, 5000); // Poll every 5 seconds
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchBatches]);
 
   const toggleDataType = (type: DataType) => {
     setSelectedDataTypes((prev) =>
@@ -206,6 +236,28 @@ export function DataManagement() {
       setOperationStatus(response.message || 'S&P 500 sync completed');
     } catch (error) {
       setOperationStatus(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
+
+  const handlePollBatch = async (batchId: string) => {
+    setPollingBatch(batchId);
+    setPollResult(null);
+    try {
+      const response = await api.pollBatchStatus(batchId);
+      setPollResult(response);
+      if (response.results_retrieved) {
+        // Refresh status after results are retrieved
+        fetchStatus();
+        fetchBatches();
+        setOperationStatus(`Batch completed: ${response.successful_updates || 0} items processed`);
+      }
+    } catch (error) {
+      setPollResult({
+        success: false,
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    } finally {
+      setPollingBatch(null);
     }
   };
 
@@ -447,13 +499,91 @@ export function DataManagement() {
             {(pendingSentiment?.news_pending || 0) + (pendingSentiment?.reddit_pending || 0)}{' '}
             pending items.
           </p>
-          <button
-            onClick={handleProcessSentiment}
-            disabled={operation === 'sentiment'}
-            className="w-full px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {operation === 'sentiment' ? 'Processing...' : 'Process Sentiment'}
-          </button>
+          <div className="space-y-2">
+            <button
+              onClick={handleProcessSentiment}
+              disabled={operation === 'sentiment'}
+              className="w-full px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {operation === 'sentiment' ? 'Processing...' : 'Submit New Batch'}
+            </button>
+
+            {/* Active Batches Section */}
+            {activeBatches.length > 0 && (
+              <div className="mt-4 pt-3 border-t border-gray-200">
+                <p className="text-xs font-medium text-gray-500 mb-2">Active Batches</p>
+                <div className="space-y-2">
+                  {activeBatches.map((batch) => {
+                    const total = batch.pending_count + batch.completed_count + batch.failed_count;
+                    const progress = total > 0 ? ((batch.completed_count + batch.failed_count) / total) * 100 : 0;
+                    return (
+                      <div key={batch.batch_id} className="bg-gray-50 rounded-lg p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs font-mono text-gray-600">
+                            {batch.batch_id.slice(0, 20)}...
+                          </span>
+                          <button
+                            onClick={() => handlePollBatch(batch.batch_id)}
+                            disabled={pollingBatch === batch.batch_id}
+                            className="flex items-center gap-1 px-2 py-1 text-xs bg-purple-100 text-purple-700 rounded hover:bg-purple-200 disabled:opacity-50"
+                          >
+                            {pollingBatch === batch.batch_id ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <Search className="w-3 h-3" />
+                            )}
+                            Check Status
+                          </button>
+                        </div>
+                        <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
+                          <span>Pending: {batch.pending_count}</span>
+                          <span>Done: {batch.completed_count}</span>
+                          {batch.failed_count > 0 && (
+                            <span className="text-red-500">Failed: {batch.failed_count}</span>
+                          )}
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-1.5">
+                          <div
+                            className="bg-purple-600 h-1.5 rounded-full transition-all"
+                            style={{ width: `${progress}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Poll Result Display */}
+            {pollResult && (
+              <div
+                className={`mt-2 p-3 rounded-lg text-sm ${
+                  pollResult.success
+                    ? pollResult.results_retrieved
+                      ? 'bg-green-50 text-green-700'
+                      : 'bg-blue-50 text-blue-700'
+                    : 'bg-red-50 text-red-700'
+                }`}
+              >
+                {pollResult.results_retrieved ? (
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="w-4 h-4" />
+                    <span>{pollResult.message}</span>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="font-medium">
+                      Anthropic Status: {pollResult.anthropic_status || 'Unknown'}
+                    </div>
+                    {pollResult.message && (
+                      <div className="text-xs mt-1">{pollResult.message}</div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </Card>
 
         {/* Calculations */}
