@@ -125,6 +125,12 @@ NEWS_API_KEY=...  # Anthropic API key
 
 ---
 
+## Future Enhancements
+
+- **Stale calculated_metrics cleanup**: When a stock fails recalculation due to insufficient data quality, delete its old `calculated_metrics` record instead of leaving stale data. Stocks with missing data should simply not appear in rankings rather than showing outdated scores.
+
+---
+
 ## Key Database Tables
 
 | Table | Purpose |
